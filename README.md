@@ -10,15 +10,21 @@ Enterprise website prototype for EvidaraOS, a white-box pharmaceutical evidence 
 
 ## Current Scope
 
-This repository is a Next.js App Router product site. It contains buyer-facing pages, interactive workflow previews, static/sample evidence content, a real demo request submission endpoint, an internal citation/provenance schema foundation, and internal seeded evidence packet API routes for development validation.
+This repository is a Next.js App Router product site. It contains buyer-facing pages, interactive workflow previews, a real demo request submission endpoint, an internal citation/provenance schema foundation, real-only public-source connector candidates, and query audit trail foundations.
 
-The current repo does not include backend services for live evidence retrieval, authentication, report generation, or agent execution. Pages that describe those workflows should be treated as product models, sample artifacts, or implementation requirements unless connected to backend services later.
+The current repo does not include authentication, report generation, EpiEngine scoring, or agent execution. Pages that describe those workflows should be treated as product models or implementation requirements unless connected to backend services later.
 
 Demo requests submitted from `/demo` are real and are persisted by `POST /api/demo-requests`. By default, local submissions are appended to `.evidara-data/demo-requests.jsonl`; set `EVIDARA_STORAGE_DIR` to choose another writable storage directory for the runtime. The demo workflow preview remains illustrative only and does not run evidence retrieval or generate reports.
 
-The Phase 2 citation/provenance foundation defines the intended relational schema in `db/migrations/0001_citation_provenance_foundation.sql` and typed local helpers in `src/lib/evidence-foundation.ts`. These helpers can seed and validate source, citation, evidence packet, retrieval-run, evidence-record, and audit-log primitives for internal development. This is not live evidence retrieval and is not connected to the public website.
+The Phase 2 citation/provenance foundation defines the intended relational schema in `db/migrations/0001_citation_provenance_foundation.sql` and typed local helpers in `src/lib/evidence-foundation.ts`. These helpers validate source, citation, evidence packet, retrieval-run, evidence-record, and audit-log primitives for internal development. Evidence records require citation/source provenance. This is not connected to the public website.
 
-The Phase 3 seeded evidence packet API exposes internal-development endpoints under `/api/internal/evidence-packets`. These endpoints return manually seeded evidence only, include citation/source provenance on every evidence record, and do not call PubMed, ClinicalTrials.gov, FDA, or any external retrieval service. They are not connected to the public website or `/app` UI and must be protected with auth/RBAC before production use.
+Seeded/manual evidence packet APIs have been retired. `/api/internal/evidence-packets` routes now return `410 Gone`. EvidaraOS product and internal API flows must use real public-source candidates or return nothing. Seeded/demo/fixture biomedical evidence is not permitted.
+
+The current internal route boundary protects `/app/*`, `/admin/*`, and `/api/internal/*` with a temporary server-side token guard using `EVIDARA_INTERNAL_ACCESS_TOKEN`. This is not user authentication, RBAC, tenant isolation, or production audit enforcement. It creates no fake users or roles and should be replaced or extended with real auth/RBAC before production use.
+
+The public-source connector framework exists under `src/lib/connectors` and internal API routes under `/api/internal/connectors`. Connectors are server-side only and return `EvidenceCandidate` records, not final evidence claims. They do not write `evidence_records`, generate reports, run EpiEngine scoring, collect PHI, access private patient portals, or connect to the public website.
+
+Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. Internal combined connector searches create query-run, source-event, candidate-event, error, and snapshot records in local development storage when executed. This is not production audit enforcement and does not create fake users.
 
 ## Scripts
 
@@ -26,9 +32,12 @@ The Phase 3 seeded evidence packet API exposes internal-development endpoints un
 npm run dev
 npm run build
 npm run lint
-npm run seed:evidence-foundation
 npm run validate:evidence-foundation
-npm run validate:seeded-packet-api
+npm run validate:internal-access-boundary
+npm run validate:public-source-connectors
+npm run validate:real-connectors
+npm run validate:real-only-evidence
+npm run validate:query-audit
 npm run validate:provenance-db
 ```
 
@@ -67,21 +76,40 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 ## Backend Routes
 
 - `POST /api/demo-requests`: validates and persists a demo request.
-- `GET /api/internal/evidence-packets`: internal-development endpoint for manually seeded evidence packets only.
-- `GET /api/internal/evidence-packets/[id]`: internal-development endpoint for one manually seeded packet.
-- `GET /api/internal/evidence-packets/[id]/citations`: internal-development endpoint for one manually seeded packet citation appendix.
+- `GET /api/internal/evidence-packets`: retired seeded/manual endpoint; returns `410 Gone`.
+- `GET /api/internal/evidence-packets/[id]`: retired seeded/manual endpoint; returns `410 Gone`.
+- `GET /api/internal/evidence-packets/[id]/citations`: retired seeded/manual endpoint; returns `410 Gone`.
+- `GET /api/internal/sources/registry`: internal source registry metadata.
+- `GET /api/internal/connectors/search?query=...`: internal combined public-source candidate search.
+- `GET /api/internal/connectors/[provider]?query=...`: internal single-provider candidate search.
+- `GET /api/internal/connectors/news?query=...`: internal news/RSS/media-signal candidate search.
+- `GET /api/internal/audit/query-runs`: internal query audit run list.
+- `GET /api/internal/audit/query-runs/[id]`: internal query audit trail for one run.
+- `GET /api/internal/audit/query-runs/[id]/events`: internal query audit events for one run.
+
+Internal endpoint access:
+
+- Set `EVIDARA_INTERNAL_ACCESS_TOKEN` to enable `/app/*`, `/admin/*`, and `/api/internal/*`.
+- Send the token as `Authorization: Bearer <token>`, `x-evidara-internal-token`, or the `evidara_internal_access` cookie.
+- If the token is not configured, protected routes fail closed.
 
 ## Internal Data Foundation
 
 - `db/migrations/0001_citation_provenance_foundation.sql`: planned PostgreSQL schema for evidence sources, citations, evidence packets, retrieval runs, evidence records, and audit logs.
+- `db/migrations/0002_query_audit_foundation.sql`: planned PostgreSQL schema for query runs, source events, candidate events, errors, and audit snapshots.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
 - `src/lib/evidence-foundation.ts`: typed server-only helpers with validation that evidence records require both a citation and an evidence source.
-- `scripts/seed-evidence-foundation.mjs`: seeds one manually cited obstructive sleep apnea disease burden record for internal schema validation only.
+- `src/lib/query-audit.ts`: typed server-only local query audit helpers for internal connector runs.
 - `scripts/validate-evidence-foundation.mjs`: validates that an evidence record cannot be created without citation/source provenance.
-- `scripts/validate-seeded-packet-api.mjs`: validates that the internal seeded packet response has citation/source provenance and does not call live retrieval sources.
+- `scripts/validate-internal-access-boundary.mjs`: validates that internal route families are token-guarded without fake auth/users.
+- `scripts/validate-real-connectors.mjs`: validates real-only connector boundaries, candidate-only results, and audit wiring.
+- `scripts/validate-real-only-evidence.mjs`: validates seeded/demo product evidence paths are retired.
+- `scripts/validate-query-audit.mjs`: validates query audit schema, helpers, APIs, and redaction foundations.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
-- `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, internal seed, and validation commands.
-- `docs/evidence-packet-api.md`: explains internal seeded packet endpoints, response shape, provenance rules, and production protection requirements.
+- `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
+- `docs/public-source-connectors.md`: explains the public-source connector registry, implemented/deferred sources, legal guardrails, candidate-only model, and patient portal exclusion.
+- `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
+- `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
 ## Legacy / Supporting Routes
 
@@ -97,8 +125,13 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - Shared editable content lives in `src/lib/evidara-content.ts`.
 - Reusable UI components live in `src/components`.
 - Local demo request persistence lives in `.evidara-data`, which is ignored by git.
-- Local citation/provenance seed data also lives in `.evidara-data` and is ignored by git.
+- Local citation/provenance and query audit development storage can live in `.evidara-data`, which is ignored by git.
 - `/app/*` and `/admin/*` are route-boundary scaffolds only. They do not fake auth, retrieval, reports, admin data, or audit enforcement.
-- Internal seeded packet APIs are for development validation only. They do not implement live retrieval, scoring, reports, auth, or production audit enforcement.
+- Seeded/manual evidence packet APIs are retired and return `410 Gone`.
+- No seeded/demo/fixture biomedical evidence is used in product or internal API flows.
+- Public-source connectors return candidate records only. They do not create final citations, evidence records, scores, reports, or public-facing claims.
+- Query audit helpers track internal connector searches when run, but they are not production audit/RBAC enforcement.
+- Private patient portals, EHR systems, login-gated systems, PHI, paywalled scraping, CAPTCHA bypass, and terms/rate-limit bypass are excluded.
+- `EVIDARA_INTERNAL_ACCESS_TOKEN` is a temporary internal guard, not production auth/RBAC.
 - `validate:provenance-db` requires a disposable PostgreSQL database and `DATABASE_URL`; do not run it against production data.
 - Avoid fake customer logos, fake testimonials, or claims of live backend functionality unless corresponding code paths exist.

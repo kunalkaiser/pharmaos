@@ -37,7 +37,7 @@ BEGIN
   )
   VALUES (
     'Validation packet',
-    'Obstructive sleep apnea',
+    'Schema validation indication',
     'schema_validation',
     'draft'
   )
@@ -53,8 +53,8 @@ BEGIN
     VALUES (
       packet_id,
       gen_random_uuid(),
-      'prevalence',
-      'Invalid evidence record without citation'
+    'limitation',
+    'Invalid evidence record without citation'
     );
     RAISE EXCEPTION 'Expected foreign key violation for evidence_record without citation.';
   EXCEPTION
@@ -67,23 +67,17 @@ BEGIN
     source_type,
     title,
     url,
-    pmid,
-    doi,
     publisher,
-    publication_date,
     access_date,
     metadata_json
   )
   VALUES (
-    'pubmed',
-    'Prevalence of obstructive sleep apnea in the general population: A systematic review',
-    'https://pubmed.ncbi.nlm.nih.gov/27568340/',
-    '27568340',
-    '10.1016/j.smrv.2016.07.002',
-    'Sleep Medicine Reviews',
-    DATE '2017-08-01',
+    'manual_source',
+    'Schema validation source',
+    'https://example.com/evidara/schema-validation-source',
+    'EvidaraOS local validation',
     CURRENT_DATE,
-    '{"validation": true, "liveRetrieval": false}'::jsonb
+    '{"schemaValidation": true, "productEvidence": false}'::jsonb
   )
   RETURNING id INTO source_id;
 
@@ -98,12 +92,12 @@ BEGIN
   )
   VALUES (
     source_id,
-    'Senaratna CV, et al. Sleep Med Rev. 2017;34:70-81. PMID: 27568340.',
-    'PMID:27568340',
-    'adult OSA prevalence range by AHI threshold',
+    'Schema validation source. Used only to prove relational provenance constraints.',
+    'SCHEMA_VALIDATION_SOURCE',
+    'constraint validation field',
     'manual_reviewed',
     'needs_review',
-    'Validation-only citation; not live retrieval.'
+    'Validation-only citation; not biomedical evidence.'
   )
   RETURNING id INTO citation_id;
 
@@ -121,13 +115,13 @@ BEGIN
   VALUES (
     packet_id,
     citation_id,
-    'prevalence',
-    'A systematic review reported adult OSA prevalence ranges that vary by AHI threshold and study population.',
-    'prevalence range',
-    '9% to 38% at AHI >=5; 6% to 17% at AHI >=15',
-    'percent of adult population in included studies',
+    'limitation',
+    'Schema validation record proving that evidence_records require citation provenance.',
+    'constraint validation field',
+    'constraint validation only',
+    'not applicable',
     'manual_reviewed',
-    'Validation-only evidence record; not live retrieval.'
+    'Validation-only evidence record; not biomedical evidence.'
   );
 
   RAISE NOTICE 'PASS: valid source -> citation -> evidence_record chain succeeded.';

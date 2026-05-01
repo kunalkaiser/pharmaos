@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { accentStyles } from "@/components/DetailPanel";
 import { SectionHeading } from "@/components/SectionHeading";
-import { resourceCards, sampleEvidenceRows } from "@/lib/evidara-content";
+import { resourceCards } from "@/lib/evidara-content";
 
 export default function ResourcesPage() {
   return (
@@ -9,8 +9,8 @@ export default function ResourcesPage() {
       <div className="mx-auto max-w-7xl">
         <SectionHeading
           eyebrow="Resources"
-          title="Review examples before a conversation"
-          subtitle="These resources are intentionally labeled as samples. They are meant to help buyers evaluate EvidaraOS structure, not to imply live generated outputs."
+          title="Review the evidence standard before a conversation"
+          subtitle="Public resources explain the platform and review model. EvidaraOS does not publish fake evidence packets or demo claims in place of real source-backed output."
         />
 
         <div className="mt-12 grid gap-5 md:grid-cols-3">
@@ -25,10 +25,11 @@ export default function ResourcesPage() {
         <section className="mt-12 rounded-[2rem] border border-slate-300 bg-white p-6 shadow-xl">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Sample evidence packet</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">Semaglutide and obstructive sleep apnea example</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Real evidence only</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">Sample packet content is retired until backed by real retrieval.</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Illustrative structure only. Claims below are examples of how an evidence packet should separate claim type, source lineage, and caveat.
+                The public site can describe packet requirements, but it does not display illustrative biomedical claims, fake citations, or synthetic evidence rows.
+                Real packet previews should be generated only from public-source candidates that retain source identifiers and review metadata.
               </p>
             </div>
             <Link href="/demo" className="inline-flex justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
@@ -36,21 +37,19 @@ export default function ResourcesPage() {
             </Link>
           </div>
 
-          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200">
-            <div className="grid grid-cols-4 bg-slate-950 text-xs font-semibold uppercase tracking-[0.16em] text-white">
-              <div className="p-4">Claim</div>
-              <div className="p-4">Class</div>
-              <div className="p-4">Source lineage</div>
-              <div className="p-4">Caveat</div>
+          <div className="mt-6 grid gap-4 rounded-3xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700 md:grid-cols-3">
+            <div>
+              <p className="font-semibold text-slate-950">Required source identity</p>
+              <p className="mt-2 leading-6">PMID, NCT ID, FDA identifier, source URL, title, access date, or equivalent provenance.</p>
             </div>
-            {sampleEvidenceRows.map((row) => (
-              <div key={row.claim} className="grid grid-cols-1 border-t border-slate-200 text-sm md:grid-cols-4">
-                <div className="p-4 text-slate-800">{row.claim}</div>
-                <div className="p-4 font-semibold text-slate-950">{row.classification}</div>
-                <div className="p-4 text-slate-600">{row.sources}</div>
-                <div className="p-4 text-slate-600">{row.caveat}</div>
-              </div>
-            ))}
+            <div>
+              <p className="font-semibold text-slate-950">Required review state</p>
+              <p className="mt-2 leading-6">Candidate-only, reviewed citation, final evidence record, limitation, and human-review status must stay distinct.</p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-950">Required limitation notes</p>
+              <p className="mt-2 leading-6">Every claim-bearing output needs caveats, confidence/provenance status, and clear boundaries on unsupported conclusions.</p>
+            </div>
           </div>
         </section>
       </div>

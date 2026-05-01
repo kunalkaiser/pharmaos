@@ -126,16 +126,11 @@ Application helpers additionally validate:
 - evidence sources include at least one source identifier or URL
 - evidence records cannot be created through helpers unless the citation and source exist
 
-## Internal Seed
+## Real-Only Evidence Policy
 
-The internal seed script creates exactly one manually cited disease-burden record for obstructive sleep apnea using a real PubMed source:
+Seeded/manual biomedical evidence paths are retired. The repository must not use seeded disease claims, demo evidence packets, fake citations, or biomedical fixtures in product or internal API flows.
 
-- PMID: `27568340`
-- Source URL: `https://pubmed.ncbi.nlm.nih.gov/27568340/`
-- Source type: `pubmed`
-- Status: internal/manual seed data only
-
-The seed is not live retrieval and is not displayed in public or workspace UI.
+Evidence candidates should come from real public-source connector results, then move through review before becoming citations or evidence records. Public pages remain explanatory and do not display fake evidence rows.
 
 ## Validation
 
@@ -155,7 +150,7 @@ The database validation script opens a transaction and rolls it back. It verifie
 
 - a citation cannot be inserted with a missing source
 - an evidence record cannot be inserted with a missing citation
-- a valid source -> citation -> evidence_record chain succeeds
+- a valid source -> citation -> evidence_record chain succeeds using neutral schema-validation rows, not biomedical fixture evidence
 
 ## Not Implemented
 

@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS evidence_packets (
   geography TEXT NOT NULL DEFAULT 'United States',
   intended_use TEXT NOT NULL DEFAULT 'internal_review',
   status TEXT NOT NULL DEFAULT 'draft' CHECK (
-    status IN ('draft', 'seeded', 'retrieval_pending', 'retrieval_complete', 'review_ready', 'approved', 'archived')
+    status IN ('draft', 'retrieval_pending', 'retrieval_complete', 'review_ready', 'approved', 'archived')
   ),
   created_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

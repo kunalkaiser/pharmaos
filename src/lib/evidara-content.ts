@@ -394,8 +394,8 @@ export const methodologySources: HomepageCard[] = [
 
 export const resourceCards: HomepageCard[] = [
   {
-    title: "Sample evidence packet",
-    copy: "A labeled sample showing claim classification, source lineage, caveats, and review status for an example indication question.",
+    title: "Evidence packet requirements",
+    copy: "A public guide to the fields a real packet must include: source identifiers, classification, caveats, and review status.",
     accent: "blue",
   },
   {
@@ -407,27 +407,6 @@ export const resourceCards: HomepageCard[] = [
     title: "Demo preparation checklist",
     copy: "A short guide for preparing an asset, disease area, or evidence question for a focused EvidaraOS walkthrough.",
     accent: "orange",
-  },
-];
-
-export const sampleEvidenceRows = [
-  {
-    claim: "Obstructive sleep apnea has meaningful cardiometabolic overlap with GLP-1-relevant populations.",
-    classification: "Associative",
-    sources: "Literature and disease-burden sources",
-    caveat: "Association does not establish treatment effect.",
-  },
-  {
-    claim: "Repurposing rationale requires mechanistic plausibility, safety transferability, and clinical validation.",
-    classification: "Causal hypothesis",
-    sources: "Mechanistic, safety, and trial sources",
-    caveat: "Hypothesis requires prospective or well-controlled validation.",
-  },
-  {
-    claim: "Payer questions would likely focus on eligible population, comparator evidence, outcomes, and budget impact.",
-    classification: "Scenario projection",
-    sources: "HEOR/RWE and access-planning assumptions",
-    caveat: "Projection depends on assumptions and stakeholder context.",
   },
 ];
 

@@ -35,7 +35,7 @@ Authenticated workspace routes:
 - `/app/reports/[id]`
 - `/app/audit-log`
 
-Future authenticated users will create evidence packets, review sources, inspect citation-backed claims, view reports, and see audit visibility. Auth is not connected yet, so these pages currently show access-boundary placeholders only.
+Future authenticated users will create evidence packets, review sources, inspect citation-backed claims, view reports, and see audit visibility. Production auth/RBAC is not connected yet. These routes are protected by a temporary internal access token guard and currently show access-boundary placeholders only.
 
 ## What Requires Admin Access
 
@@ -49,7 +49,20 @@ Admin routes:
 - `/admin/sources`
 - `/admin/audit-log`
 
-Future admin users will review demo requests, monitor retrieval runs, manage sources, and inspect operational audit logs. Admin auth is not connected yet, so these pages currently show access-boundary placeholders only.
+Future admin users will review demo requests, monitor retrieval runs, manage sources, and inspect operational audit logs. Production admin auth is not connected yet. These routes are protected by a temporary internal access token guard and currently show access-boundary placeholders only.
+
+## Temporary Internal Access Guard
+
+`/app/*`, `/admin/*`, and `/api/internal/*` are guarded by `src/proxy.ts`.
+
+Current behavior:
+
+- If `EVIDARA_INTERNAL_ACCESS_TOKEN` is not configured, protected routes fail closed.
+- If the token is configured, requests must provide it via `Authorization: Bearer <token>`, `x-evidara-internal-token`, or the `evidara_internal_access` cookie.
+- This is not user authentication, RBAC, tenant isolation, or production audit enforcement.
+- No fake user identity or role is created.
+
+Production auth/RBAC must replace or sit in front of this temporary internal guard before external use.
 
 ## Backend Services Needed
 
@@ -86,8 +99,8 @@ Do not claim:
 |---|---|---|
 | Public website | Existing public routes | Static/sample/preview content, no auth |
 | Demo request | `/demo`, `POST /api/demo-requests` | Real request submission, no evidence generation |
-| Product workspace | `/app/*` | Scaffold only, auth/backend required |
-| Admin workspace | `/admin/*` | Scaffold only, admin/backend required |
+| Product workspace | `/app/*` | Scaffold only, temporary internal token guard, auth/backend required |
+| Admin workspace | `/admin/*` | Scaffold only, temporary internal token guard, admin/backend required |
 
 ## Implementation Status
 

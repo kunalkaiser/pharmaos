@@ -1,0 +1,165 @@
+# Public Source Connectors
+
+## Status
+
+EvidaraOS now has an internal, server-side public-source connector framework. It retrieves evidence candidates only. It does not generate final evidence claims, citations, evidence records, reports, scores, or audit-enforced product workflows.
+
+The public website does not run live retrieval.
+
+## Implemented Connectors
+
+- PubMed / NCBI E-utilities
+- ClinicalTrials.gov API v2
+- openFDA drug labels
+- openFDA FAERS adverse events
+- openFDA drug enforcement / recalls
+- openFDA NDC directory
+- openFDA Drugs@FDA
+- DailyMed SPL API
+- MedlinePlus public education search
+- RxNorm drug normalization
+- CDC data.cdc.gov Socrata catalog search
+- WHO Global Health Observatory indicator search
+- NCI GDC public metadata search
+- GDELT public news/media candidates
+- Official RSS connector for FDA, FDA MedWatch, NIH, and CDC feeds
+
+## Registered but Deferred
+
+The registry also includes providers that are not implemented because they require legal review, licensing, account/API-key review, access confirmation, or a more careful source-specific design:
+
+- PubMed Central / PMC
+- Europe PMC
+- Crossref
+- Semantic Scholar
+- bioRxiv / medRxiv
+- Google Scholar
+- EU Clinical Trials Register / CTIS
+- WHO ICTRP
+- FDA downloadable datasets
+- FDA Orange Book
+- FDA Purple Book
+- CDC WONDER
+- SEER / NCI public cancer statistics
+- US Cancer Statistics
+- Our World in Data health datasets
+- cBioPortal
+- GEO
+- dbGaP
+- TCGA controlled data
+- UMLS
+- ICD / SNOMED
+- SEC EDGAR
+- company investor relations RSS/press feeds
+
+## Access Methods
+
+Supported access methods are represented in `src/lib/connectors/source-registry.ts`:
+
+- official API
+- downloadable dataset
+- RSS feed
+- official public page
+- licensed API
+- manual review required
+
+## Required Environment Variables
+
+Optional:
+
+- `NCBI_API_KEY`: server-only key for improved NCBI/PubMed rate limits.
+- `EVIDARA_INTERNAL_ACCESS_TOKEN`: required to access `/api/internal/*`, `/app/*`, and `/admin/*`.
+
+Do not use `NEXT_PUBLIC` for private keys.
+
+## Normalization Model
+
+Every connector returns `EvidenceCandidate` objects with:
+
+- source provider
+- source type
+- source identifier
+- source title
+- source URL
+- access date
+- retrieval timestamp
+- source metadata when safe
+- terms review status
+- confidence/provenance status
+- limitation notes
+- `candidateOnly: true`
+- `generatedClaim: false`
+
+## Candidate-Only Boundary
+
+Retrieved records are not final evidence claims.
+
+Promotion path for a future phase:
+
+```text
+EvidenceCandidate -> reviewed citation -> reviewed evidence_record -> evidence_packet
+```
+
+No connector writes final `evidence_records`.
+
+## Legal / Terms Guardrails
+
+Connectors must:
+
+- use official APIs, public downloadable datasets, RSS feeds, or explicitly permitted public pages
+- respect rate limits, API limits, terms, and robots policies
+- avoid paywalled scraping
+- avoid CAPTCHAs and bypass behavior
+- avoid login-gated systems
+- preserve access date and retrieval timestamp
+- mark restricted/licensed providers clearly
+
+## Patient Portal Boundary
+
+This phase excludes private patient portals and EHR systems.
+
+Not allowed:
+
+- Epic/MyChart scraping
+- Cerner portal scraping
+- athena patient portal scraping
+- private EHR access
+- PHI collection
+
+Future FHIR/EHR integration requires:
+
+- explicit authorization
+- consent model
+- security review
+- legal/compliance approval
+- separate auth and audit design
+
+## Rate Limits / Safety Controls
+
+Current controls:
+
+- required query parameter
+- query length limit
+- max result cap of 10
+- connector timeout
+- graceful partial failure
+- no infinite pagination
+- no bulk ingestion
+- no automatic evidence promotion
+
+## Internal API Routes
+
+- `GET /api/internal/sources/registry`
+- `GET /api/internal/connectors/search?query=...`
+- `GET /api/internal/connectors/[provider]?query=...`
+- `GET /api/internal/connectors/news?query=...`
+
+These routes are protected by `src/proxy.ts` and require `EVIDARA_INTERNAL_ACCESS_TOKEN`.
+
+## Validation
+
+```bash
+npm run validate:public-source-connectors
+```
+
+This uses registry/static/schema checks and does not require internet access. Live connector checks are intentionally not claimed when network/API access is unavailable.
