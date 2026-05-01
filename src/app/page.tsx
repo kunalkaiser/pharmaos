@@ -1,65 +1,228 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Icon } from "@/components/Icon";
+import { accentStyles } from "@/components/DetailPanel";
+import { audienceCards, enterpriseExpectations, homepagePillars, intelligenceUseCases, platformMetrics } from "@/lib/evidara-content";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="bg-[#f6f8fb]">
+      <section className="overflow-hidden border-b border-slate-200 bg-white px-5 py-16 md:px-8 md:py-24">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-teal-700/20 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900 shadow-sm">
+              <Icon name="spark" className="h-4 w-4" />
+              Pharma evidence OS for transparent RWE workflows
+            </div>
+            <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-tight text-slate-950 md:text-6xl">
+              EvidaraOS
+            </h1>
+            <p className="mt-5 max-w-2xl text-xl font-medium leading-8 text-slate-700">
+              Turn pharma questions into governed, source-grounded evidence pathways.
+            </p>
+            <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
+              EvidaraOS combines evidence retrieval, dynamic chain orchestration, agentic synthesis, and governance controls so teams can see how an answer was produced before they rely on it.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/architecture" className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+                Explore Architecture
+                <Icon name="arrow" className="ml-2 h-4 w-4" />
+              </Link>
+              <Link href="/query-journey" className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
+                See Query Journey
+              </Link>
+            </div>
+          </div>
+
+          <div className="rounded-[2rem] border border-slate-300 bg-slate-950 p-4 shadow-2xl shadow-slate-300/70">
+            <div className="rounded-[1.5rem] bg-white p-5">
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <Icon name="ask" className="h-5 w-5 text-slate-400" />
+                <p className="flex-1 text-sm text-slate-500">Evaluate semaglutide for obstructive sleep apnea...</p>
+                <Link href="/query-journey" className="rounded-full bg-teal-600 px-4 py-2 text-xs font-semibold text-white">
+                  Ask
+                </Link>
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-slate-200 bg-[#f8fafc] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Visible pathway</p>
+                <div className="mt-4 space-y-3">
+                  {["Intent", "Chains", "Sources", "Classification", "Governed output"].map((label, index) => (
+                    <div key={label} className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{index + 1}</div>
+                      <div className="h-2 flex-1 rounded-full bg-slate-100">
+                        <div className="h-2 rounded-full bg-teal-500" style={{ width: `${88 - index * 10}%` }} />
+                      </div>
+                      <p className="w-28 text-xs font-semibold text-slate-600">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {["Source fitness", "Evidence retrieval", "Dynamic chains", "Audit trail"].map((label, index) => (
+                  <div key={label} className={index === 0 ? "rounded-2xl border border-blue-200 bg-blue-50 p-4" : index === 1 ? "rounded-2xl border border-violet-200 bg-violet-50 p-4" : index === 2 ? "rounded-2xl border border-teal-200 bg-teal-50 p-4" : "rounded-2xl border border-orange-200 bg-orange-50 p-4"}>
+                    <Icon name={label === "Evidence retrieval" ? "database" : label === "Audit trail" ? "audit" : label === "Source fitness" ? "target" : "chain"} className="h-5 w-5 text-teal-700" />
+                    <p className="mt-3 text-sm font-semibold text-slate-900">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      <section className="border-b border-slate-200 bg-slate-950 px-5 py-10 text-white md:px-8">
+        <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-4">
+          {platformMetrics.map((metric) => (
+            <article key={metric.label} className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="text-3xl font-semibold text-teal-200">{metric.value}</p>
+              <h2 className="mt-2 text-sm font-semibold uppercase tracking-[0.16em] text-white">{metric.label}</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-300">{metric.copy}</p>
+            </article>
+          ))}
         </div>
-      </main>
+      </section>
+
+      <section className="bg-white px-5 py-16 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-10 lg:grid-cols-[0.82fr_1.18fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">What EvidaraOS does</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Evidence work as a visible system.</h2>
+              <p className="mt-4 text-base leading-7 text-slate-600">
+                EvidaraOS makes the operating model visible: sources, chains, agents, governance, and function-specific outputs.
+              </p>
+            </div>
+            <StaticSystemMap />
+          </div>
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            {homepagePillars.map((pillar) => (
+              <article key={pillar.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm ring-1 ring-slate-100">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${accentStyles[pillar.accent]}`}>{pillar.title}</span>
+                <p className="mt-4 text-sm leading-6 text-slate-600">{pillar.copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-slate-200 bg-[#eaf2f4] px-5 py-16 md:px-8">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Built for pharma functions</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">One operating model, multiple evidence jobs.</h2>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              Different pharma teams ask different evidence questions, but they still need the same visibility into sources, reasoning, caveats, and review requirements.
+            </p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
+            {audienceCards.map((card) => (
+              <article key={card.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${accentStyles[card.accent]}`}>{card.title}</span>
+                <p className="mt-4 text-sm leading-6 text-slate-600">{card.copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white px-5 py-16 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Ask and verify</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">Answers are only useful when the method is inspectable.</h2>
+              <p className="mt-4 text-base leading-7 text-slate-600">
+                EvidaraOS gives teams a simple product promise: ask a pharma evidence question, then verify the sources, assumptions, chain logic, and governance checks behind the response.
+              </p>
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <article className="rounded-[2rem] border border-blue-200 bg-blue-50 p-6">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-700 text-white">
+                  <Icon name="ask" />
+                </div>
+                <h3 className="mt-5 text-xl font-semibold text-slate-950">Ask what matters now</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  Teams can start with natural-language questions about treatments, populations, evidence gaps, safety concerns, payer strategy, or repurposing hypotheses.
+                </p>
+              </article>
+              <article className="rounded-[2rem] border border-teal-200 bg-teal-50 p-6">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-700 text-white">
+                  <Icon name="audit" />
+                </div>
+                <h3 className="mt-5 text-xl font-semibold text-slate-950">Verify before trust</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  Every output should expose source grounding, evidence classification, assumptions, chain activation, and review requirements before export.
+                </p>
+              </article>
+            </div>
+          </div>
+
+          <div className="mt-10 rounded-[2rem] border border-slate-300 bg-slate-950 p-5 shadow-xl">
+            <div className="grid gap-4 md:grid-cols-5">
+              {intelligenceUseCases.map((item) => (
+                <article key={item.title} className="rounded-3xl border border-white/10 bg-white p-5">
+                  <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${accentStyles[item.accent]}`}>{item.title}</span>
+                  <p className="mt-4 text-sm leading-6 text-slate-600">{item.copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white px-5 py-16 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-[2rem] border border-slate-300 bg-slate-950 p-6 text-white shadow-xl md:p-8">
+            <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-200">Enterprise expectations</p>
+                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white">Speed is not enough. Show the evidence path.</h2>
+                <p className="mt-4 text-base leading-7 text-slate-300">
+                  EvidaraOS is structured around visible architecture, proof-style operating metrics, quality controls, and clear solution pathways.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {enterpriseExpectations.map((item) => (
+                  <article key={item.title} className="rounded-3xl border border-white/10 bg-white/8 p-5">
+                    <h3 className="text-sm font-semibold text-white">{item.title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-slate-300">{item.copy}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function StaticSystemMap() {
+  const nodes = [
+    ["Sources", "Literature, trials, labels"],
+    ["Chains", "A, B, C, D, P, R"],
+    ["Agents", "Retrieval + synthesis"],
+    ["Governance", "Classify + audit"],
+    ["Outputs", "Evidence briefs"],
+  ];
+
+  return (
+    <div className="rounded-[2rem] border border-slate-300 bg-slate-950 p-5 shadow-xl">
+      <div className="grid gap-3 md:grid-cols-5">
+        {nodes.map(([title, copy], index) => (
+          <div key={title} className="relative rounded-2xl border border-white/10 bg-white p-4 text-slate-950">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white">{index + 1}</div>
+            <h3 className="mt-4 text-sm font-semibold">{title}</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-600">{copy}</p>
+            {index < nodes.length - 1 ? <div className="absolute -right-3 top-1/2 hidden h-px w-6 bg-teal-300 md:block" /> : null}
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 rounded-2xl border border-teal-300/30 bg-teal-400/10 p-4 text-sm text-teal-50">
+        A static, inspectable operating model. No stock imagery. No animation. Just the product logic made visible.
+      </div>
     </div>
   );
 }
