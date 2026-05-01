@@ -129,6 +129,65 @@ export type EvidenceFoundationStore = {
   auditLogs: AuditLog[];
 };
 
+export type EvidenceRecordWithProvenance = {
+  evidenceRecordId: string;
+  claimText: string;
+  evidenceType: EvidenceRecordType;
+  extractedField?: string;
+  valueText?: string;
+  unit?: string;
+  geography: string;
+  confidenceLabel: ConfidenceLabel;
+  citationId: string;
+  sourceId: string;
+  sourceType: SourceType;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourceIdentifier: string;
+  pmid?: string;
+  pmcid?: string;
+  doi?: string;
+  nctId?: string;
+  fdaIdentifier?: string;
+  publisher?: string;
+  publicationDate?: string;
+  accessDate: string;
+  extractionConfidence: ConfidenceLabel;
+  humanReviewStatus: HumanReviewStatus;
+  limitationNotes?: string;
+};
+
+export type SeededEvidencePacketSection = {
+  id: string;
+  title: string;
+  status: "seeded_manual_evidence" | "not_seeded";
+  records: EvidenceRecordWithProvenance[];
+  note?: string;
+};
+
+export type SeededEvidencePacketResponse = {
+  packetId: string;
+  title: string;
+  diseaseOrIndication: string;
+  geography: string;
+  intendedUse: string;
+  status: EvidencePacket["status"];
+  dataScope: "internal_manual_seed";
+  liveRetrieval: false;
+  authRequiredBeforeProduction: true;
+  createdAt: string;
+  updatedAt: string;
+  sections: SeededEvidencePacketSection[];
+  citationAppendix: EvidenceRecordWithProvenance[];
+  provenance: {
+    sourceCount: number;
+    citationCount: number;
+    evidenceRecordCount: number;
+    retrievalRunStatus: "manual_seed_only_no_live_retrieval";
+    limitations: string[];
+  };
+};
+
 export type CreateEvidenceSourceInput = Omit<EvidenceSource, "id" | "createdAt" | "updatedAt" | "accessDate"> & {
   accessDate?: string;
 };
@@ -312,4 +371,146 @@ export async function createEvidenceRecord(input: CreateEvidenceRecordInput): Pr
 
 export async function listEvidenceFoundationRecords() {
   return readStore();
+}
+
+const sectionDefinitions: Array<{ id: string; title: string; recordTypes: EvidenceRecordType[]; emptyNote: string }> = [
+  {
+    id: "disease-overview",
+    title: "Disease overview",
+    recordTypes: ["disease_overview"],
+    emptyNote: "No manually reviewed disease overview record has been seeded yet.",
+  },
+  {
+    id: "disease-burden-summary",
+    title: "Disease burden summary",
+    recordTypes: ["incidence", "prevalence"],
+    emptyNote: "No manually reviewed burden summary beyond seeded epidemiology records is available yet.",
+  },
+  {
+    id: "epidemiology-evidence",
+    title: "Epidemiology evidence",
+    recordTypes: ["incidence", "prevalence"],
+    emptyNote: "No manually reviewed epidemiology record has been seeded yet.",
+  },
+  {
+    id: "patient-population-notes",
+    title: "Patient population notes",
+    recordTypes: ["patient_population"],
+    emptyNote: "No manually reviewed patient population record has been seeded yet.",
+  },
+  {
+    id: "clinical-relevance",
+    title: "Clinical relevance",
+    recordTypes: ["clinical_trial_landscape", "treatment_landscape", "unmet_need"],
+    emptyNote: "No manually reviewed clinical relevance record has been seeded yet.",
+  },
+  {
+    id: "limitations",
+    title: "Limitations",
+    recordTypes: ["limitation"],
+    emptyNote: "Limitations are carried on each seeded evidence record until a dedicated limitations record is added.",
+  },
+];
+
+function composeRecordWithProvenance(store: EvidenceFoundationStore, record: EvidenceRecord): EvidenceRecordWithProvenance {
+  const citation = store.citations.find((item) => item.id === record.citationId);
+  if (!citation) throw new Error(`Evidence record is missing citation provenance: ${record.id}`);
+
+  const source = store.evidenceSources.find((item) => item.id === citation.evidenceSourceId);
+  if (!source) throw new Error(`Citation is missing source provenance: ${citation.id}`);
+
+  return {
+    evidenceRecordId: record.id,
+    claimText: record.claimText,
+    evidenceType: record.recordType,
+    extractedField: record.extractedField ?? citation.extractedField,
+    valueText: record.valueText,
+    unit: record.unit,
+    geography: record.geography,
+    confidenceLabel: record.confidenceLabel,
+    citationId: citation.id,
+    sourceId: source.id,
+    sourceType: source.sourceType,
+    sourceTitle: source.title,
+    sourceUrl: source.url,
+    sourceIdentifier: citation.sourceIdentifier,
+    pmid: source.pmid,
+    pmcid: source.pmcid,
+    doi: source.doi,
+    nctId: source.nctId,
+    fdaIdentifier: source.fdaIdentifier,
+    publisher: source.publisher,
+    publicationDate: source.publicationDate,
+    accessDate: citation.accessDate,
+    extractionConfidence: citation.extractionConfidence,
+    humanReviewStatus: citation.humanReviewStatus,
+    limitationNotes: record.limitationNotes ?? citation.limitationNotes,
+  };
+}
+
+function composeSeededPacket(store: EvidenceFoundationStore, packet: EvidencePacket): SeededEvidencePacketResponse {
+  if (packet.status !== "seeded") throw new Error(`Evidence packet is not a seeded/manual packet: ${packet.id}`);
+
+  const records = store.evidenceRecords
+    .filter((record) => record.evidencePacketId === packet.id)
+    .map((record) => composeRecordWithProvenance(store, record));
+
+  const citationIds = new Set(records.map((record) => record.citationId));
+  const sourceIds = new Set(records.map((record) => record.sourceId));
+
+  return {
+    packetId: packet.id,
+    title: packet.title,
+    diseaseOrIndication: packet.diseaseOrIndication,
+    geography: packet.geography,
+    intendedUse: packet.intendedUse,
+    status: packet.status,
+    dataScope: "internal_manual_seed",
+    liveRetrieval: false,
+    authRequiredBeforeProduction: true,
+    createdAt: packet.createdAt,
+    updatedAt: packet.updatedAt,
+    sections: sectionDefinitions.map((section) => {
+      const sectionRecords = records.filter((record) => section.recordTypes.includes(record.evidenceType));
+      return {
+        id: section.id,
+        title: section.title,
+        status: sectionRecords.length > 0 ? "seeded_manual_evidence" : "not_seeded",
+        records: sectionRecords,
+        note: sectionRecords.length > 0 ? "Manual seeded evidence only. This is not live retrieval." : section.emptyNote,
+      };
+    }),
+    citationAppendix: records,
+    provenance: {
+      sourceCount: sourceIds.size,
+      citationCount: citationIds.size,
+      evidenceRecordCount: records.length,
+      retrievalRunStatus: "manual_seed_only_no_live_retrieval",
+      limitations: [
+        "Internal seeded packet for development only.",
+        "No live retrieval has been performed.",
+        "No EpiEngine scoring has been performed.",
+        "No report export has been generated.",
+        "Auth/RBAC is not implemented; protect internal endpoints before production.",
+      ],
+    },
+  };
+}
+
+export async function listSeededEvidencePackets(): Promise<SeededEvidencePacketResponse[]> {
+  const store = await readStore();
+  return store.evidencePackets
+    .filter((packet) => packet.status === "seeded")
+    .map((packet) => composeSeededPacket(store, packet));
+}
+
+export async function getSeededEvidencePacket(packetId: string): Promise<SeededEvidencePacketResponse | null> {
+  const store = await readStore();
+  const packet = store.evidencePackets.find((item) => item.id === packetId && item.status === "seeded");
+  return packet ? composeSeededPacket(store, packet) : null;
+}
+
+export async function getSeededEvidencePacketCitations(packetId: string): Promise<EvidenceRecordWithProvenance[] | null> {
+  const packet = await getSeededEvidencePacket(packetId);
+  return packet ? packet.citationAppendix : null;
 }
