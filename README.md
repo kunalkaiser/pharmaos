@@ -26,6 +26,8 @@ The public-source connector framework exists under `src/lib/connectors` and inte
 
 Live internal connector validation currently covers PubMed, ClinicalTrials.gov, RxNorm, DailyMed, MedlinePlus, and openFDA labels as required providers, plus optional openFDA FAERS, enforcement/recalls, NDC, and Drugs@FDA checks. Live validation requires a running app server and `EVIDARA_INTERNAL_ACCESS_TOKEN`.
 
+Connector runtime monitoring foundation now exists at `GET /api/internal/connectors/health`. Static health checks report registry/implementation status only. Live health checks require `?live=true`, internal access, a running server, and network availability; they call real connector APIs and do not report fake success.
+
 Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. When `DATABASE_URL` is configured and migrations are applied, query-run, source-event, candidate-event, error, and snapshot records persist to PostgreSQL. Without `DATABASE_URL`, helpers fall back to `.evidara-data` local JSON for development only. This is not production audit immutability and does not create fake users.
 
 Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
@@ -53,6 +55,7 @@ npm run validate:candidate-promotion
 npm run validate:production-persistence
 npm run validate:auth-rbac
 npm run validate:tenant-scoping
+npm run validate:connector-monitoring
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -99,6 +102,7 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - `GET /api/internal/connectors/search?query=...`: internal combined public-source candidate search.
 - `GET /api/internal/connectors/[provider]?query=...`: internal single-provider candidate search.
 - `GET /api/internal/connectors/news?query=...`: internal news/RSS/media-signal candidate search.
+- `GET /api/internal/connectors/health?live=true`: internal connector runtime health checks; live checks are explicit and candidate-only.
 - `GET /api/internal/audit/query-runs`: internal query audit run list.
 - `GET /api/internal/audit/query-runs/[id]`: internal query audit trail for one run.
 - `GET /api/internal/audit/query-runs/[id]/events`: internal query audit events for one run.
@@ -134,6 +138,7 @@ Internal endpoint access:
 - `scripts/validate-production-persistence.mjs`: validates server-only PostgreSQL persistence wiring and optionally checks live DB tables when `DATABASE_URL` is configured.
 - `scripts/validate-auth-rbac.mjs`: validates auth/RBAC schema, login, session, and role-protection foundations without fake users.
 - `scripts/validate-tenant-scoping.mjs`: validates organization schema, membership setup, session organization context, and no fake tenants.
+- `scripts/validate-connector-monitoring.mjs`: validates internal connector health/monitoring boundaries.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.

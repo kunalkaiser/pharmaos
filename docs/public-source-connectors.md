@@ -155,17 +155,21 @@ Current controls:
 - `GET /api/internal/connectors/search?query=...`
 - `GET /api/internal/connectors/[provider]?query=...`
 - `GET /api/internal/connectors/news?query=...`
+- `GET /api/internal/connectors/health`
 - `POST /api/internal/review/candidate-promotions`
 
 These routes are protected by `src/proxy.ts` and require `EVIDARA_INTERNAL_ACCESS_TOKEN`.
 
 Candidate promotion is review-gated. It can create a citation and optional evidence record only from a real `EvidenceCandidate` with `candidateOnly=true` and `generatedClaim=false`, and only when an internal reviewer supplies citation text, review notes, and attestation. It does not generate claims or run retrieval.
 
+Connector health checks are internal-only. The default health route reports static registry/implementation status. `?live=true` explicitly calls real connector APIs with bounded smoke queries. If network/API access is unavailable, health checks report degraded/down status instead of fake success.
+
 ## Validation
 
 ```bash
 npm run validate:public-source-connectors
 npm run validate:real-connectors
+npm run validate:connector-monitoring
 EVIDARA_INTERNAL_ACCESS_TOKEN=<token> EVIDARA_CONNECTOR_BASE_URL=http://127.0.0.1:3002 npm run validate:live-connectors
 ```
 
