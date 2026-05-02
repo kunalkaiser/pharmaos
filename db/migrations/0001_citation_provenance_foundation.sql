@@ -15,8 +15,14 @@ CREATE TABLE IF NOT EXISTS evidence_sources (
       'fda_label',
       'fda_drugs',
       'openfda',
+      'dailymed',
+      'rxnorm',
       'cdc',
       'nih',
+      'who',
+      'nci',
+      'news_rss',
+      'public_dataset',
       'cms',
       'manual_source'
     )

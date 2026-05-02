@@ -26,6 +26,8 @@ The public-source connector framework exists under `src/lib/connectors` and inte
 
 Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. Internal combined connector searches create query-run, source-event, candidate-event, error, and snapshot records in local development storage when executed. This is not production audit enforcement and does not create fake users.
 
+Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
+
 ## Scripts
 
 ```bash
@@ -38,6 +40,7 @@ npm run validate:public-source-connectors
 npm run validate:real-connectors
 npm run validate:real-only-evidence
 npm run validate:query-audit
+npm run validate:candidate-promotion
 npm run validate:provenance-db
 ```
 
@@ -86,6 +89,8 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - `GET /api/internal/audit/query-runs`: internal query audit run list.
 - `GET /api/internal/audit/query-runs/[id]`: internal query audit trail for one run.
 - `GET /api/internal/audit/query-runs/[id]/events`: internal query audit events for one run.
+- `GET /api/internal/review/candidate-promotions`: internal candidate promotion list.
+- `POST /api/internal/review/candidate-promotions`: promotes a real candidate into a reviewed citation and optional evidence record after internal review attestation.
 
 Internal endpoint access:
 
@@ -97,6 +102,7 @@ Internal endpoint access:
 
 - `db/migrations/0001_citation_provenance_foundation.sql`: planned PostgreSQL schema for evidence sources, citations, evidence packets, retrieval runs, evidence records, and audit logs.
 - `db/migrations/0002_query_audit_foundation.sql`: planned PostgreSQL schema for query runs, source events, candidate events, errors, and audit snapshots.
+- `db/migrations/0003_candidate_promotion_foundation.sql`: planned PostgreSQL schema for reviewed candidate promotion records.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
 - `src/lib/evidence-foundation.ts`: typed server-only helpers with validation that evidence records require both a citation and an evidence source.
 - `src/lib/query-audit.ts`: typed server-only local query audit helpers for internal connector runs.
@@ -105,9 +111,11 @@ Internal endpoint access:
 - `scripts/validate-real-connectors.mjs`: validates real-only connector boundaries, candidate-only results, and audit wiring.
 - `scripts/validate-real-only-evidence.mjs`: validates seeded/demo product evidence paths are retired.
 - `scripts/validate-query-audit.mjs`: validates query audit schema, helpers, APIs, and redaction foundations.
+- `scripts/validate-candidate-promotion.mjs`: validates candidate promotion requires real candidates, review attestation, and generatedClaim=false.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
 - `docs/public-source-connectors.md`: explains the public-source connector registry, implemented/deferred sources, legal guardrails, candidate-only model, and patient portal exclusion.
+- `docs/candidate-promotion-review.md`: explains the internal-only candidate-to-citation review path.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
@@ -130,6 +138,7 @@ Internal endpoint access:
 - Seeded/manual evidence packet APIs are retired and return `410 Gone`.
 - No seeded/demo/fixture biomedical evidence is used in product or internal API flows.
 - Public-source connectors return candidate records only. They do not create final citations, evidence records, scores, reports, or public-facing claims.
+- Candidate promotion is internal-only and review-gated. It does not generate claims or bypass citation/source provenance.
 - Query audit helpers track internal connector searches when run, but they are not production audit/RBAC enforcement.
 - Private patient portals, EHR systems, login-gated systems, PHI, paywalled scraping, CAPTCHA bypass, and terms/rate-limit bypass are excluded.
 - `EVIDARA_INTERNAL_ACCESS_TOKEN` is a temporary internal guard, not production auth/RBAC.

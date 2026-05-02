@@ -153,8 +153,11 @@ Current controls:
 - `GET /api/internal/connectors/search?query=...`
 - `GET /api/internal/connectors/[provider]?query=...`
 - `GET /api/internal/connectors/news?query=...`
+- `POST /api/internal/review/candidate-promotions`
 
 These routes are protected by `src/proxy.ts` and require `EVIDARA_INTERNAL_ACCESS_TOKEN`.
+
+Candidate promotion is review-gated. It can create a citation and optional evidence record only from a real `EvidenceCandidate` with `candidateOnly=true` and `generatedClaim=false`, and only when an internal reviewer supplies citation text, review notes, and attestation. It does not generate claims or run retrieval.
 
 ## Validation
 

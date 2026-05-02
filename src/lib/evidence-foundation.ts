@@ -2,7 +2,8 @@ import "server-only";
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import type { EvidenceCandidate } from "@/lib/connectors/types";
 
 const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? path.join(process.cwd(), ".evidara-data");
 const storageFile = path.join(storageDirectory, "evidence-foundation.json");
@@ -14,8 +15,14 @@ export const sourceTypes = [
   "fda_label",
   "fda_drugs",
   "openfda",
+  "dailymed",
+  "rxnorm",
   "cdc",
   "nih",
+  "who",
+  "nci",
+  "news_rss",
+  "public_dataset",
   "cms",
   "manual_source",
 ] as const;
@@ -120,6 +127,32 @@ export type AuditLog = {
   createdAt: string;
 };
 
+export type CandidatePromotion = {
+  id: string;
+  queryRunId?: string;
+  candidateId: string;
+  candidateHash: string;
+  sourceProvider: string;
+  sourceIdentifier?: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourceType: SourceType;
+  evidenceSourceId: string;
+  citationId: string;
+  evidenceRecordId?: string;
+  evidencePacketId?: string;
+  candidateOnly: true;
+  generatedClaim: false;
+  promotionStatus: "promoted_to_citation" | "promoted_to_evidence_record" | "rejected";
+  reviewerAttestation: true;
+  reviewerType: "anonymous_internal" | "future_user" | "system";
+  reviewerId?: string;
+  reviewNotes: string;
+  limitationNotes?: string;
+  promotedAt: string;
+  createdAt: string;
+};
+
 export type EvidenceFoundationStore = {
   evidenceSources: EvidenceSource[];
   citations: Citation[];
@@ -127,6 +160,7 @@ export type EvidenceFoundationStore = {
   retrievalRuns: RetrievalRun[];
   evidenceRecords: EvidenceRecord[];
   auditLogs: AuditLog[];
+  candidatePromotions: CandidatePromotion[];
 };
 
 export type CreateEvidenceSourceInput = Omit<EvidenceSource, "id" | "createdAt" | "updatedAt" | "accessDate"> & {
@@ -155,6 +189,30 @@ export type CreateRetrievalRunInput = Omit<RetrievalRun, "id" | "createdAt" | "s
   status?: RetrievalRun["status"];
 };
 
+export type PromoteCandidateInput = {
+  candidate: EvidenceCandidate;
+  queryRunId?: string;
+  citationText: string;
+  extractedField?: string;
+  humanReviewStatus: Extract<HumanReviewStatus, "reviewed" | "approved">;
+  reviewNotes: string;
+  reviewerAttestation: true;
+  reviewerType?: CandidatePromotion["reviewerType"];
+  reviewerId?: string;
+  limitationNotes?: string;
+  evidenceRecord?: {
+    evidencePacketId: string;
+    recordType: EvidenceRecordType;
+    claimText: string;
+    extractedField?: string;
+    valueText?: string;
+    unit?: string;
+    geography?: string;
+    confidenceLabel?: ConfidenceLabel;
+    limitationNotes?: string;
+  };
+};
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -171,6 +229,7 @@ function initialStore(): EvidenceFoundationStore {
     retrievalRuns: [],
     evidenceRecords: [],
     auditLogs: [],
+    candidatePromotions: [],
   };
 }
 
@@ -192,6 +251,47 @@ async function writeStore(store: EvidenceFoundationStore) {
 function ensureSourceIdentifier(input: CreateEvidenceSourceInput) {
   if (!input.url && !input.pmid && !input.pmcid && !input.doi && !input.nctId && !input.fdaIdentifier) {
     throw new Error("Evidence source requires a URL or source identifier.");
+  }
+}
+
+function hashText(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function mapCandidateSourceType(candidate: EvidenceCandidate): SourceType {
+  if (candidate.sourceProvider === "pubmed") return "pubmed";
+  if (candidate.sourceProvider === "clinicaltrials") return "clinicaltrials_gov";
+  if (candidate.sourceProvider.startsWith("openfda")) return "openfda";
+  if (candidate.sourceProvider === "dailymed") return "dailymed";
+  if (candidate.sourceProvider === "rxnorm") return "rxnorm";
+  if (candidate.sourceProvider.startsWith("cdc")) return "cdc";
+  if (candidate.sourceProvider === "who-gho") return "who";
+  if (candidate.sourceProvider === "gdc") return "nci";
+  if (candidate.sourceProvider.includes("rss") || candidate.sourceProvider === "gdelt") return "news_rss";
+  if (candidate.sourceType === "public_dataset") return "public_dataset";
+  return "manual_source";
+}
+
+function extractIdentifiers(candidate: EvidenceCandidate) {
+  const identifier = candidate.sourceIdentifier ?? "";
+  return {
+    pmid: identifier.match(/^PMID:?(.*)$/i)?.[1]?.trim(),
+    nctId: identifier.match(/^NCT[0-9]+$/i)?.[0]?.toUpperCase(),
+    fdaIdentifier: candidate.sourceProvider.startsWith("openfda") ? identifier : undefined,
+  };
+}
+
+function ensureRealCandidate(candidate: EvidenceCandidate) {
+  if (candidate.candidateOnly !== true) throw new Error("Only candidate-only records can be promoted.");
+  if (candidate.generatedClaim !== false) throw new Error("Generated claims cannot be promoted.");
+  if (!candidate.sourceProvider || !candidate.sourceTitle || !candidate.sourceUrl) {
+    throw new Error("Candidate requires source provider, title, and URL.");
+  }
+  if (/example\.com|schema-validation|fixture|seed/i.test(`${candidate.sourceUrl} ${candidate.sourceProvider} ${candidate.candidateId}`)) {
+    throw new Error("Schema checks, fixtures, seeded records, and example URLs cannot be promoted.");
+  }
+  if (candidate.promotionStatus === "not_eligible" || candidate.confidence === "restricted") {
+    throw new Error("Candidate is not eligible for promotion.");
   }
 }
 
@@ -308,6 +408,124 @@ export async function createEvidenceRecord(input: CreateEvidenceRecordInput): Pr
   appendAudit(store, { eventType: "evidence_record.created", entityType: "evidence_record", entityId: record.id });
   await writeStore(store);
   return record;
+}
+
+export async function promoteEvidenceCandidate(input: PromoteCandidateInput) {
+  ensureRealCandidate(input.candidate);
+  if (!input.reviewerAttestation) throw new Error("Reviewer attestation is required.");
+  if (!input.reviewNotes.trim()) throw new Error("Review notes are required.");
+  if (!input.citationText.trim()) throw new Error("Citation text is required.");
+
+  const store = await readStore();
+  const timestamp = now();
+  const sourceType = mapCandidateSourceType(input.candidate);
+  const identifiers = extractIdentifiers(input.candidate);
+
+  if (input.evidenceRecord) {
+    ensurePacketExists(store, input.evidenceRecord.evidencePacketId);
+    if (!input.evidenceRecord.claimText.trim()) throw new Error("Human-supplied claim text is required to create an evidence record.");
+  }
+
+  const existingSource = store.evidenceSources.find((item) => item.url === input.candidate.sourceUrl || item.pmid === identifiers.pmid || item.nctId === identifiers.nctId);
+  const source: EvidenceSource = existingSource ?? {
+    id: randomUUID(),
+    sourceType,
+    title: input.candidate.sourceTitle,
+    url: input.candidate.sourceUrl,
+    pmid: identifiers.pmid,
+    nctId: identifiers.nctId,
+    fdaIdentifier: identifiers.fdaIdentifier,
+    publisher: input.candidate.sourceDisplayName,
+    publicationDate: input.candidate.publicationDate,
+    accessDate: input.candidate.accessDate ?? today(),
+    metadata: {
+      sourceProvider: input.candidate.sourceProvider,
+      sourceCategory: input.candidate.sourceCategory,
+      retrievedAt: input.candidate.retrievedAt,
+      sourceLicenseNote: input.candidate.sourceLicenseNote,
+      limitationNotes: input.candidate.limitationNotes,
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  if (!existingSource) store.evidenceSources.push(source);
+
+  const citation: Citation = {
+    id: randomUUID(),
+    evidenceSourceId: source.id,
+    citationText: input.citationText,
+    sourceIdentifier: input.candidate.sourceIdentifier ?? input.candidate.sourceUrl,
+    accessDate: input.candidate.accessDate ?? today(),
+    extractedField: input.extractedField,
+    extractionConfidence: input.candidate.confidence === "retrieved" ? "high" : "medium",
+    humanReviewStatus: input.humanReviewStatus,
+    limitationNotes: input.limitationNotes ?? input.candidate.limitationNotes.join(" "),
+    createdAt: timestamp,
+  };
+  store.citations.push(citation);
+
+  let record: EvidenceRecord | undefined;
+  if (input.evidenceRecord) {
+    record = {
+      id: randomUUID(),
+      evidencePacketId: input.evidenceRecord.evidencePacketId,
+      citationId: citation.id,
+      recordType: input.evidenceRecord.recordType,
+      claimText: input.evidenceRecord.claimText,
+      extractedField: input.evidenceRecord.extractedField ?? input.extractedField,
+      valueText: input.evidenceRecord.valueText,
+      unit: input.evidenceRecord.unit,
+      geography: input.evidenceRecord.geography ?? "United States",
+      confidenceLabel: input.evidenceRecord.confidenceLabel ?? "manual_reviewed",
+      limitationNotes: input.evidenceRecord.limitationNotes ?? input.limitationNotes,
+      createdAt: timestamp,
+    };
+    store.evidenceRecords.push(record);
+  }
+
+  const promotion: CandidatePromotion = {
+    id: randomUUID(),
+    queryRunId: input.queryRunId,
+    candidateId: input.candidate.candidateId,
+    candidateHash: hashText(`${input.candidate.sourceProvider}|${input.candidate.sourceIdentifier ?? ""}|${input.candidate.sourceUrl}`),
+    sourceProvider: input.candidate.sourceProvider,
+    sourceIdentifier: input.candidate.sourceIdentifier,
+    sourceTitle: input.candidate.sourceTitle,
+    sourceUrl: input.candidate.sourceUrl,
+    sourceType,
+    evidenceSourceId: source.id,
+    citationId: citation.id,
+    evidenceRecordId: record?.id,
+    evidencePacketId: record?.evidencePacketId,
+    candidateOnly: true,
+    generatedClaim: false,
+    promotionStatus: record ? "promoted_to_evidence_record" : "promoted_to_citation",
+    reviewerAttestation: true,
+    reviewerType: input.reviewerType ?? "anonymous_internal",
+    reviewerId: input.reviewerId,
+    reviewNotes: input.reviewNotes,
+    limitationNotes: input.limitationNotes,
+    promotedAt: timestamp,
+    createdAt: timestamp,
+  };
+  store.candidatePromotions.push(promotion);
+
+  appendAudit(store, {
+    eventType: record ? "candidate.promoted_to_evidence_record" : "candidate.promoted_to_citation",
+    entityType: "candidate_promotion",
+    entityId: promotion.id,
+    metadata: {
+      queryRunId: input.queryRunId,
+      candidateId: input.candidate.candidateId,
+      sourceProvider: input.candidate.sourceProvider,
+      citationId: citation.id,
+      evidenceRecordId: record?.id,
+      generatedClaim: false,
+    },
+  });
+
+  await writeStore(store);
+  return { promotion, source, citation, evidenceRecord: record };
 }
 
 export async function listEvidenceFoundationRecords() {
