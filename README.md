@@ -48,6 +48,8 @@ Audit immutability foundation now exists with append-only database triggers for 
 
 Internal report preview now exists at `/app/reports/[id]`. It renders only reviewed/approved citation-backed evidence records and a source appendix. It does not generate executive summaries, charts, PDFs, or fake report sections.
 
+Reviewed-evidence PDF export now exists at `POST /api/internal/reports/[id]/export`. It generates a draft/internal PDF only when reviewed evidence records and sources exist, stores an export record when `DATABASE_URL` is configured, and writes an immutable audit event. It does not export unreviewed candidates or fake report sections.
+
 ## Scripts
 
 ```bash
@@ -71,6 +73,7 @@ npm run validate:review-queue-ui
 npm run validate:candidate-rejection-workflow
 npm run validate:audit-immutability
 npm run validate:report-preview
+npm run validate:pdf-export
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -125,6 +128,7 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - `GET /api/internal/review/candidate-promotions`: internal candidate promotion list.
 - `POST /api/internal/review/candidate-promotions`: promotes a real candidate into a reviewed citation and optional evidence record after internal review attestation.
 - `GET/POST /api/internal/review/candidate-rejections`: records real candidate rejection decisions with reviewer identity and audit event.
+- `POST /api/internal/reports/[id]/export`: generates a draft/internal reviewed-evidence PDF export.
 
 Internal endpoint access:
 
@@ -163,6 +167,7 @@ Internal endpoint access:
 - `scripts/validate-candidate-rejection-workflow.mjs`: validates rejection schema, required reviewer identity, notes, and audit event.
 - `scripts/validate-audit-immutability.mjs`: validates append-only audit trigger and hash-chain helper foundation.
 - `scripts/validate-report-preview.mjs`: validates reviewed-evidence-only report preview boundaries.
+- `scripts/validate-pdf-export.mjs`: validates reviewed-evidence-only PDF export, source appendix, export record, and audit event.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -176,6 +181,7 @@ Internal endpoint access:
 - `docs/candidate-rejection-workflow.md`: explains the real candidate rejection workflow and no-deletion boundary.
 - `docs/audit-immutability-foundation.md`: explains append-only audit foundation and compliance limitations.
 - `docs/report-preview.md`: explains reviewed-evidence-only internal report preview and PDF limitations.
+- `docs/pdf-export.md`: explains reviewed-evidence-only PDF export and remaining report-template limits.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
