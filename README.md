@@ -42,6 +42,8 @@ Source/citation deduplication foundation now exists with canonical source keys a
 
 Internal review queue UI now exists at `/app/review-queue`. It reads real query audit candidate events if present and otherwise shows an honest empty state. It does not render fake rows and does not enable promotion/rejection actions until the explicit review workflow is implemented.
 
+Candidate rejection workflow foundation now exists at `POST /api/internal/review/candidate-rejections`. It requires authenticated reviewer identity, rejection reason, reviewer notes, database persistence, and writes an audit event. It does not delete candidate events or create fake reviewers.
+
 ## Scripts
 
 ```bash
@@ -62,6 +64,7 @@ npm run validate:tenant-scoping
 npm run validate:connector-monitoring
 npm run validate:source-citation-deduplication
 npm run validate:review-queue-ui
+npm run validate:candidate-rejection-workflow
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -115,6 +118,7 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - `GET /api/internal/audit/query-runs/[id]/events`: internal query audit events for one run.
 - `GET /api/internal/review/candidate-promotions`: internal candidate promotion list.
 - `POST /api/internal/review/candidate-promotions`: promotes a real candidate into a reviewed citation and optional evidence record after internal review attestation.
+- `GET/POST /api/internal/review/candidate-rejections`: records real candidate rejection decisions with reviewer identity and audit event.
 
 Internal endpoint access:
 
@@ -149,6 +153,7 @@ Internal endpoint access:
 - `scripts/validate-connector-monitoring.mjs`: validates internal connector health/monitoring boundaries.
 - `scripts/validate-source-citation-deduplication.mjs`: validates canonical source/citation deduplication foundations.
 - `scripts/validate-review-queue-ui.mjs`: validates the internal review queue reads real audit candidates and does not fake actions.
+- `scripts/validate-candidate-rejection-workflow.mjs`: validates rejection schema, required reviewer identity, notes, and audit event.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -159,6 +164,7 @@ Internal endpoint access:
 - `docs/tenant-organization-scoping.md`: explains the B3 organization boundary and remaining tenant filtering work.
 - `docs/source-citation-deduplication.md`: explains exact-match source/citation deduplication and deferred merge review.
 - `docs/review-queue-ui.md`: explains the internal review queue empty state and disabled action boundary.
+- `docs/candidate-rejection-workflow.md`: explains the real candidate rejection workflow and no-deletion boundary.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
