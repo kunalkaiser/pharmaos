@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { allowedRolesForPath, hasRole } from "@/lib/auth/rbac";
+import { authSessionCookieName, verifyAuthSession } from "@/lib/auth/session";
 
 const protectedPrefixes = ["/app", "/admin", "/api/internal"];
 const internalAccessCookie = "evidara_internal_access";
@@ -18,20 +20,24 @@ function tokenFromRequest(request: NextRequest) {
   return request.headers.get(tokenHeader) ?? bearerToken ?? request.cookies.get(internalAccessCookie)?.value ?? "";
 }
 
-function jsonBoundaryResponse(status: number, message: string) {
+function authSessionFromRequest(request: NextRequest) {
+  return request.cookies.get(authSessionCookieName)?.value ?? "";
+}
+
+function jsonBoundaryResponse(status: number, message: string, authRbacImplemented = Boolean(process.env.EVIDARA_AUTH_SESSION_SECRET)) {
   return NextResponse.json(
     {
       ok: false,
       error: message,
       internalAccessBoundary: true,
       liveRetrieval: false,
-      authRbacImplemented: false,
+      authRbacImplemented,
     },
     { status }
   );
 }
 
-function htmlBoundaryResponse(status: number, title: string, message: string) {
+function htmlBoundaryResponse(status: number, title: string, message: string, authRbacImplemented = Boolean(process.env.EVIDARA_AUTH_SESSION_SECRET)) {
   return new NextResponse(
     `<!doctype html>
 <html lang="en">
@@ -55,7 +61,7 @@ function htmlBoundaryResponse(status: number, title: string, message: string) {
         <p class="label">Internal access boundary</p>
         <h1>${title}</h1>
         <p>${message}</p>
-        <p>This is not user authentication or RBAC. It is a temporary server-side internal access guard until production auth is implemented. No live retrieval, scoring, report export, or audit enforcement is running here.</p>
+        <p>${authRbacImplemented ? "Authenticated session access is required for this workspace boundary." : "This is not user authentication or RBAC. It is a temporary server-side internal access guard until production auth is implemented."} No live scoring, report export, or public retrieval is running here.</p>
         <p><a href="/">Return to public EvidaraOS site</a></p>
       </section>
     </main>
@@ -70,9 +76,34 @@ function htmlBoundaryResponse(status: number, title: string, message: string) {
   );
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   if (!isProtectedPath(pathname)) return NextResponse.next();
+
+  const authSecret = process.env.EVIDARA_AUTH_SESSION_SECRET;
+  if (authSecret) {
+    const session = await verifyAuthSession(authSessionFromRequest(request), authSecret);
+    if (!session) {
+      const message = "Authenticated EvidaraOS workspace session is required.";
+      return isApiPath(pathname)
+        ? jsonBoundaryResponse(401, message, true)
+        : htmlBoundaryResponse(401, "Authenticated Access Required", message, true);
+    }
+
+    const allowed = allowedRolesForPath(pathname);
+    if (!hasRole(session.roles, allowed)) {
+      const message = "Your EvidaraOS role does not allow access to this route.";
+      return isApiPath(pathname)
+        ? jsonBoundaryResponse(403, message, true)
+        : htmlBoundaryResponse(403, "Workspace Role Required", message, true);
+    }
+
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-evidara-actor-id", session.sub);
+    requestHeaders.set("x-evidara-actor-email", session.email);
+    requestHeaders.set("x-evidara-actor-roles", session.roles.join(","));
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
 
   const configuredToken = process.env.EVIDARA_INTERNAL_ACCESS_TOKEN;
 

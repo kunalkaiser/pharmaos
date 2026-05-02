@@ -30,7 +30,9 @@ Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`
 
 Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
 
-Production persistence foundation now exists for evidence sources, citations, evidence records, evidence packets, retrieval runs, query audit tables, candidate promotions, and audit logs. Set server-only `DATABASE_URL` to enable PostgreSQL persistence. Do not expose database credentials through `NEXT_PUBLIC_*`. Auth/RBAC, tenant scoping, production audit immutability, report generation/export, and EpiEngine scoring are still not implemented.
+Production persistence foundation now exists for evidence sources, citations, evidence records, evidence packets, retrieval runs, query audit tables, candidate promotions, and audit logs. Set server-only `DATABASE_URL` to enable PostgreSQL persistence. Do not expose database credentials through `NEXT_PUBLIC_*`.
+
+Auth/RBAC foundation now exists with real user, role, password, login, logout, session, and route-protection primitives. No fake users are seeded. Set `DATABASE_URL` and `EVIDARA_AUTH_SESSION_SECRET`, apply `db/migrations/0004_auth_rbac_foundation.sql`, and create a real user with `npm run create:auth-user`. Tenant scoping, production audit immutability, report generation/export, and EpiEngine scoring are still not implemented.
 
 ## Scripts
 
@@ -47,6 +49,8 @@ npm run validate:real-only-evidence
 npm run validate:query-audit
 npm run validate:candidate-promotion
 npm run validate:production-persistence
+npm run validate:auth-rbac
+npm run create:auth-user
 npm run validate:provenance-db
 ```
 
@@ -100,16 +104,19 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 
 Internal endpoint access:
 
-- Set `EVIDARA_INTERNAL_ACCESS_TOKEN` to enable `/app/*`, `/admin/*`, and `/api/internal/*`.
-- Send the token as `Authorization: Bearer <token>`, `x-evidara-internal-token`, or the `evidara_internal_access` cookie.
-- If the token is not configured, protected routes fail closed.
+- Preferred internal access is now signed authenticated session access created by `POST /api/auth/login` after applying auth migrations and creating a real user.
+- Set `EVIDARA_AUTH_SESSION_SECRET` for signed workspace sessions.
+- `EVIDARA_INTERNAL_ACCESS_TOKEN` remains a development fallback only until auth runtime rollout is complete.
+- If neither auth sessions nor the temporary token are configured, protected routes fail closed.
 
 ## Internal Data Foundation
 
 - `db/migrations/0001_citation_provenance_foundation.sql`: planned PostgreSQL schema for evidence sources, citations, evidence packets, retrieval runs, evidence records, and audit logs.
 - `db/migrations/0002_query_audit_foundation.sql`: planned PostgreSQL schema for query runs, source events, candidate events, errors, and audit snapshots.
 - `db/migrations/0003_candidate_promotion_foundation.sql`: planned PostgreSQL schema for reviewed candidate promotion records.
+- `db/migrations/0004_auth_rbac_foundation.sql`: planned PostgreSQL schema for real users, roles, and user-role assignments.
 - `src/lib/db/client.ts`: server-only PostgreSQL client used only when `DATABASE_URL` is configured.
+- `src/lib/auth/*`: auth/RBAC helpers for password verification, signed session cookies, users, and route roles.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
 - `src/lib/evidence-foundation.ts`: typed server-only helpers with PostgreSQL persistence when `DATABASE_URL` exists and local JSON fallback for development only.
 - `src/lib/query-audit.ts`: typed server-only query audit helpers with PostgreSQL persistence when `DATABASE_URL` exists and local JSON fallback for development only.
@@ -121,11 +128,14 @@ Internal endpoint access:
 - `scripts/validate-query-audit.mjs`: validates query audit schema, helpers, APIs, and redaction foundations.
 - `scripts/validate-candidate-promotion.mjs`: validates candidate promotion requires real candidates, review attestation, and generatedClaim=false.
 - `scripts/validate-production-persistence.mjs`: validates server-only PostgreSQL persistence wiring and optionally checks live DB tables when `DATABASE_URL` is configured.
+- `scripts/validate-auth-rbac.mjs`: validates auth/RBAC schema, login, session, and role-protection foundations without fake users.
+- `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
 - `docs/public-source-connectors.md`: explains the public-source connector registry, implemented/deferred sources, legal guardrails, candidate-only model, and patient portal exclusion.
 - `docs/candidate-promotion-review.md`: explains the internal-only candidate-to-citation review path.
 - `docs/production-persistence.md`: explains the B1 persistence boundary, migration path, environment variables, and remaining beta blockers.
+- `docs/auth-rbac-foundation.md`: explains the B2 auth/RBAC boundary and real-user setup.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
@@ -151,6 +161,7 @@ Internal endpoint access:
 - Candidate promotion is internal-only and review-gated. It does not generate claims or bypass citation/source provenance.
 - Query audit helpers track internal connector searches when run, but they are not production audit/RBAC enforcement.
 - PostgreSQL persistence requires applying `db/migrations/0001_citation_provenance_foundation.sql`, `db/migrations/0002_query_audit_foundation.sql`, and `db/migrations/0003_candidate_promotion_foundation.sql`.
+- Auth/RBAC requires applying `db/migrations/0004_auth_rbac_foundation.sql` and creating real users; no fake/demo users are generated.
 - Local JSON persistence is development-only and is not acceptable for private beta evidence review.
 - Private patient portals, EHR systems, login-gated systems, PHI, paywalled scraping, CAPTCHA bypass, and terms/rate-limit bypass are excluded.
 - `EVIDARA_INTERNAL_ACCESS_TOKEN` is a temporary internal guard, not production auth/RBAC.
