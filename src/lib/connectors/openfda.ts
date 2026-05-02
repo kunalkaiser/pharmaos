@@ -11,6 +11,10 @@ function text(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function quoteOpenFda(value: string) {
+  return `"${value.replace(/"/g, "").trim()}"`;
+}
+
 async function searchOpenFdaEndpoint(
   providerId: "openfda-label" | "openfda-faers" | "openfda-enforcement" | "openfda-ndc" | "openfda-drugsfda",
   params: ConnectorSearchParams
@@ -19,12 +23,33 @@ async function searchOpenFdaEndpoint(
   const query = sanitizeQuery(params.query);
   const retrievedAt = new Date().toISOString();
   const accessDate = today();
+  const quotedQuery = quoteOpenFda(query);
   const endpointMap = {
-    "openfda-label": { url: "https://api.fda.gov/drug/label.json", search: `openfda.brand_name:${query}+openfda.generic_name:${query}`, type: "drug_label" as const },
-    "openfda-faers": { url: "https://api.fda.gov/drug/event.json", search: `patient.drug.medicinalproduct:${query}`, type: "adverse_event" as const },
-    "openfda-enforcement": { url: "https://api.fda.gov/drug/enforcement.json", search: `product_description:${query}`, type: "recall" as const },
-    "openfda-ndc": { url: "https://api.fda.gov/drug/ndc.json", search: `brand_name:${query}+generic_name:${query}`, type: "drug_label" as const },
-    "openfda-drugsfda": { url: "https://api.fda.gov/drug/drugsfda.json", search: `products.brand_name:${query}+products.active_ingredients.name:${query}`, type: "regulatory_approval" as const },
+    "openfda-label": {
+      url: "https://api.fda.gov/drug/label.json",
+      search: `(openfda.brand_name:${quotedQuery} OR openfda.generic_name:${quotedQuery} OR openfda.substance_name:${quotedQuery})`,
+      type: "drug_label" as const,
+    },
+    "openfda-faers": {
+      url: "https://api.fda.gov/drug/event.json",
+      search: `patient.drug.medicinalproduct:${quotedQuery}`,
+      type: "adverse_event" as const,
+    },
+    "openfda-enforcement": {
+      url: "https://api.fda.gov/drug/enforcement.json",
+      search: `(product_description:${quotedQuery} OR openfda.brand_name:${quotedQuery} OR openfda.generic_name:${quotedQuery})`,
+      type: "recall" as const,
+    },
+    "openfda-ndc": {
+      url: "https://api.fda.gov/drug/ndc.json",
+      search: `(brand_name:${quotedQuery} OR generic_name:${quotedQuery})`,
+      type: "drug_label" as const,
+    },
+    "openfda-drugsfda": {
+      url: "https://api.fda.gov/drug/drugsfda.json",
+      search: `(products.brand_name:${quotedQuery} OR products.active_ingredients.name:${quotedQuery})`,
+      type: "regulatory_approval" as const,
+    },
   }[providerId];
 
   try {

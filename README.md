@@ -24,6 +24,8 @@ The current internal route boundary protects `/app/*`, `/admin/*`, and `/api/int
 
 The public-source connector framework exists under `src/lib/connectors` and internal API routes under `/api/internal/connectors`. Connectors are server-side only and return `EvidenceCandidate` records, not final evidence claims. They do not write `evidence_records`, generate reports, run EpiEngine scoring, collect PHI, access private patient portals, or connect to the public website.
 
+Live internal connector validation currently covers PubMed, ClinicalTrials.gov, RxNorm, DailyMed, MedlinePlus, and openFDA labels as required providers, plus optional openFDA FAERS, enforcement/recalls, NDC, and Drugs@FDA checks. Live validation requires a running app server and `EVIDARA_INTERNAL_ACCESS_TOKEN`.
+
 Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. Internal combined connector searches create query-run, source-event, candidate-event, error, and snapshot records in local development storage when executed. This is not production audit enforcement and does not create fake users.
 
 Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
@@ -38,6 +40,7 @@ npm run validate:evidence-foundation
 npm run validate:internal-access-boundary
 npm run validate:public-source-connectors
 npm run validate:real-connectors
+npm run validate:live-connectors
 npm run validate:real-only-evidence
 npm run validate:query-audit
 npm run validate:candidate-promotion
@@ -109,6 +112,7 @@ Internal endpoint access:
 - `scripts/validate-evidence-foundation.mjs`: validates that an evidence record cannot be created without citation/source provenance.
 - `scripts/validate-internal-access-boundary.mjs`: validates that internal route families are token-guarded without fake auth/users.
 - `scripts/validate-real-connectors.mjs`: validates real-only connector boundaries, candidate-only results, and audit wiring.
+- `scripts/validate-live-connectors.mjs`: live-tests protected connector endpoints when the local app server and `EVIDARA_INTERNAL_ACCESS_TOKEN` are available.
 - `scripts/validate-real-only-evidence.mjs`: validates seeded/demo product evidence paths are retired.
 - `scripts/validate-query-audit.mjs`: validates query audit schema, helpers, APIs, and redaction foundations.
 - `scripts/validate-candidate-promotion.mjs`: validates candidate promotion requires real candidates, review attestation, and generatedClaim=false.

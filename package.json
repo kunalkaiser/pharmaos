@@ -11,6 +11,7 @@
     "validate:internal-access-boundary": "node scripts/validate-internal-access-boundary.mjs",
     "validate:public-source-connectors": "node scripts/validate-public-source-connectors.mjs",
     "validate:real-connectors": "node scripts/validate-real-connectors.mjs",
+    "validate:live-connectors": "node scripts/validate-live-connectors.mjs",
     "validate:real-only-evidence": "node scripts/validate-real-only-evidence.mjs",
     "validate:query-audit": "node scripts/validate-query-audit.mjs",
     "validate:candidate-promotion": "node scripts/validate-candidate-promotion.mjs",

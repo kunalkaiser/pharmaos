@@ -6,6 +6,8 @@ EvidaraOS now has an internal, server-side public-source connector framework. It
 
 The public website does not run live retrieval.
 
+Latest live validation confirmed protected internal endpoint retrieval for PubMed, ClinicalTrials.gov, RxNorm, DailyMed, MedlinePlus, openFDA labels, openFDA FAERS, openFDA enforcement/recalls, openFDA NDC, and openFDA Drugs@FDA. These results remain `EvidenceCandidate` records only.
+
 ## Implemented Connectors
 
 - PubMed / NCBI E-utilities
@@ -163,6 +165,16 @@ Candidate promotion is review-gated. It can create a citation and optional evide
 
 ```bash
 npm run validate:public-source-connectors
+npm run validate:real-connectors
+EVIDARA_INTERNAL_ACCESS_TOKEN=<token> EVIDARA_CONNECTOR_BASE_URL=http://127.0.0.1:3002 npm run validate:live-connectors
 ```
 
-This uses registry/static/schema checks and does not require internet access. Live connector checks are intentionally not claimed when network/API access is unavailable.
+`validate:public-source-connectors` and `validate:real-connectors` use registry/static/schema checks and do not require internet access.
+
+`validate:live-connectors` requires:
+
+- a running local app server
+- `EVIDARA_INTERNAL_ACCESS_TOKEN`
+- network access to official/public source APIs
+
+If those prerequisites are unavailable, live checks must not be claimed as passing.
