@@ -1006,3 +1006,32 @@ export async function listEvidenceFoundationRecords() {
   }
   return readStore();
 }
+
+export async function getReviewedEvidencePacketReport(evidencePacketId: string) {
+  const store = await listEvidenceFoundationRecords();
+  const packet = store.evidencePackets.find((item) => item.id === evidencePacketId);
+  if (!packet) return null;
+
+  const reviewedCitations = new Set(
+    store.citations
+      .filter((citation) => citation.humanReviewStatus === "reviewed" || citation.humanReviewStatus === "approved")
+      .map((citation) => citation.id),
+  );
+  const evidenceRecords = store.evidenceRecords.filter(
+    (record) => record.evidencePacketId === evidencePacketId && reviewedCitations.has(record.citationId),
+  );
+  const citationIds = new Set(evidenceRecords.map((record) => record.citationId));
+  const citations = store.citations.filter((citation) => citationIds.has(citation.id));
+  const sourceIds = new Set(citations.map((citation) => citation.evidenceSourceId));
+  const sources = store.evidenceSources.filter((source) => sourceIds.has(source.id));
+
+  return {
+    packet,
+    evidenceRecords,
+    citations,
+    sources,
+    reviewedEvidenceOnly: true,
+    generatedExecutiveSummary: false,
+    pdfExportImplemented: false,
+  };
+}

@@ -46,6 +46,8 @@ Candidate rejection workflow foundation now exists at `POST /api/internal/review
 
 Audit immutability foundation now exists with append-only database triggers for `audit_logs` and hash-chain helpers for new audit events. This is a technical foundation only; it is not a compliance certification or legal guarantee.
 
+Internal report preview now exists at `/app/reports/[id]`. It renders only reviewed/approved citation-backed evidence records and a source appendix. It does not generate executive summaries, charts, PDFs, or fake report sections.
+
 ## Scripts
 
 ```bash
@@ -68,6 +70,7 @@ npm run validate:source-citation-deduplication
 npm run validate:review-queue-ui
 npm run validate:candidate-rejection-workflow
 npm run validate:audit-immutability
+npm run validate:report-preview
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -159,6 +162,7 @@ Internal endpoint access:
 - `scripts/validate-review-queue-ui.mjs`: validates the internal review queue reads real audit candidates and does not fake actions.
 - `scripts/validate-candidate-rejection-workflow.mjs`: validates rejection schema, required reviewer identity, notes, and audit event.
 - `scripts/validate-audit-immutability.mjs`: validates append-only audit trigger and hash-chain helper foundation.
+- `scripts/validate-report-preview.mjs`: validates reviewed-evidence-only report preview boundaries.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -171,6 +175,7 @@ Internal endpoint access:
 - `docs/review-queue-ui.md`: explains the internal review queue empty state and disabled action boundary.
 - `docs/candidate-rejection-workflow.md`: explains the real candidate rejection workflow and no-deletion boundary.
 - `docs/audit-immutability-foundation.md`: explains append-only audit foundation and compliance limitations.
+- `docs/report-preview.md`: explains reviewed-evidence-only internal report preview and PDF limitations.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
