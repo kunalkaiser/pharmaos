@@ -26,9 +26,11 @@ The public-source connector framework exists under `src/lib/connectors` and inte
 
 Live internal connector validation currently covers PubMed, ClinicalTrials.gov, RxNorm, DailyMed, MedlinePlus, and openFDA labels as required providers, plus optional openFDA FAERS, enforcement/recalls, NDC, and Drugs@FDA checks. Live validation requires a running app server and `EVIDARA_INTERNAL_ACCESS_TOKEN`.
 
-Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. Internal combined connector searches create query-run, source-event, candidate-event, error, and snapshot records in local development storage when executed. This is not production audit enforcement and does not create fake users.
+Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`, `src/lib/query-audit.ts`, and protected APIs under `/api/internal/audit/query-runs`. When `DATABASE_URL` is configured and migrations are applied, query-run, source-event, candidate-event, error, and snapshot records persist to PostgreSQL. Without `DATABASE_URL`, helpers fall back to `.evidara-data` local JSON for development only. This is not production audit immutability and does not create fake users.
 
 Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
+
+Production persistence foundation now exists for evidence sources, citations, evidence records, evidence packets, retrieval runs, query audit tables, candidate promotions, and audit logs. Set server-only `DATABASE_URL` to enable PostgreSQL persistence. Do not expose database credentials through `NEXT_PUBLIC_*`. Auth/RBAC, tenant scoping, production audit immutability, report generation/export, and EpiEngine scoring are still not implemented.
 
 ## Scripts
 
@@ -44,6 +46,7 @@ npm run validate:live-connectors
 npm run validate:real-only-evidence
 npm run validate:query-audit
 npm run validate:candidate-promotion
+npm run validate:production-persistence
 npm run validate:provenance-db
 ```
 
@@ -106,9 +109,10 @@ Internal endpoint access:
 - `db/migrations/0001_citation_provenance_foundation.sql`: planned PostgreSQL schema for evidence sources, citations, evidence packets, retrieval runs, evidence records, and audit logs.
 - `db/migrations/0002_query_audit_foundation.sql`: planned PostgreSQL schema for query runs, source events, candidate events, errors, and audit snapshots.
 - `db/migrations/0003_candidate_promotion_foundation.sql`: planned PostgreSQL schema for reviewed candidate promotion records.
+- `src/lib/db/client.ts`: server-only PostgreSQL client used only when `DATABASE_URL` is configured.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
-- `src/lib/evidence-foundation.ts`: typed server-only helpers with validation that evidence records require both a citation and an evidence source.
-- `src/lib/query-audit.ts`: typed server-only local query audit helpers for internal connector runs.
+- `src/lib/evidence-foundation.ts`: typed server-only helpers with PostgreSQL persistence when `DATABASE_URL` exists and local JSON fallback for development only.
+- `src/lib/query-audit.ts`: typed server-only query audit helpers with PostgreSQL persistence when `DATABASE_URL` exists and local JSON fallback for development only.
 - `scripts/validate-evidence-foundation.mjs`: validates that an evidence record cannot be created without citation/source provenance.
 - `scripts/validate-internal-access-boundary.mjs`: validates that internal route families are token-guarded without fake auth/users.
 - `scripts/validate-real-connectors.mjs`: validates real-only connector boundaries, candidate-only results, and audit wiring.
@@ -116,10 +120,12 @@ Internal endpoint access:
 - `scripts/validate-real-only-evidence.mjs`: validates seeded/demo product evidence paths are retired.
 - `scripts/validate-query-audit.mjs`: validates query audit schema, helpers, APIs, and redaction foundations.
 - `scripts/validate-candidate-promotion.mjs`: validates candidate promotion requires real candidates, review attestation, and generatedClaim=false.
+- `scripts/validate-production-persistence.mjs`: validates server-only PostgreSQL persistence wiring and optionally checks live DB tables when `DATABASE_URL` is configured.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
 - `docs/public-source-connectors.md`: explains the public-source connector registry, implemented/deferred sources, legal guardrails, candidate-only model, and patient portal exclusion.
 - `docs/candidate-promotion-review.md`: explains the internal-only candidate-to-citation review path.
+- `docs/production-persistence.md`: explains the B1 persistence boundary, migration path, environment variables, and remaining beta blockers.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
@@ -144,6 +150,8 @@ Internal endpoint access:
 - Public-source connectors return candidate records only. They do not create final citations, evidence records, scores, reports, or public-facing claims.
 - Candidate promotion is internal-only and review-gated. It does not generate claims or bypass citation/source provenance.
 - Query audit helpers track internal connector searches when run, but they are not production audit/RBAC enforcement.
+- PostgreSQL persistence requires applying `db/migrations/0001_citation_provenance_foundation.sql`, `db/migrations/0002_query_audit_foundation.sql`, and `db/migrations/0003_candidate_promotion_foundation.sql`.
+- Local JSON persistence is development-only and is not acceptable for private beta evidence review.
 - Private patient portals, EHR systems, login-gated systems, PHI, paywalled scraping, CAPTCHA bypass, and terms/rate-limit bypass are excluded.
 - `EVIDARA_INTERNAL_ACCESS_TOKEN` is a temporary internal guard, not production auth/RBAC.
 - `validate:provenance-db` requires a disposable PostgreSQL database and `DATABASE_URL`; do not run it against production data.
