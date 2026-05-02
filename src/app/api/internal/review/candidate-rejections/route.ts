@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
+import { appendImmutableAuditLog } from "@/lib/audit-integrity";
 
 export const runtime = "nodejs";
 
@@ -99,25 +100,22 @@ export async function POST(request: Request) {
     ],
   );
 
-  await dbQuery(
-    `INSERT INTO audit_logs (
-      id, organization_id, actor_id, actor_type, event_type, entity_type, entity_id, metadata_json, created_at
-    ) VALUES ($1,$2::uuid,$3,'user','candidate.rejected','candidate_rejection',$4,$5::jsonb,$6)`,
-    [
-      randomUUID(),
-      organizationId || null,
-      reviewerId,
-      id,
-      JSON.stringify({
-        queryRunId: body.queryRunId,
-        candidateId: body.candidateId,
-        sourceProvider: body.sourceProvider,
-        sourceIdentifier: body.sourceIdentifier,
-        rejectionReason: body.rejectionReason,
-      }),
-      rejectedAt,
-    ],
-  );
+  await appendImmutableAuditLog({
+    organizationId: organizationId || undefined,
+    actorId: reviewerId,
+    actorType: "user",
+    eventType: "candidate.rejected",
+    entityType: "candidate_rejection",
+    entityId: id,
+    createdAt: rejectedAt,
+    metadata: {
+      queryRunId: body.queryRunId,
+      candidateId: body.candidateId,
+      sourceProvider: body.sourceProvider,
+      sourceIdentifier: body.sourceIdentifier,
+      rejectionReason: body.rejectionReason,
+    },
+  });
 
   return NextResponse.json({
     ok: true,

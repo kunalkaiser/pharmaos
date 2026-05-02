@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { EvidenceCandidate } from "@/lib/connectors/types";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
 import { canonicalSourceKey, citationDedupHash } from "@/lib/evidence-deduplication";
+import { appendImmutableAuditLog } from "@/lib/audit-integrity";
 
 const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? path.join(process.cwd(), ".evidara-data");
 const storageFile = path.join(storageDirectory, "evidence-foundation.json");
@@ -392,21 +393,7 @@ function mapPromotion(row: Record<string, unknown>): CandidatePromotion {
 }
 
 async function appendDbAudit(event: Omit<AuditLog, "id" | "createdAt" | "actorType"> & { actorType?: AuditLog["actorType"] }) {
-  await dbQuery(
-    `INSERT INTO audit_logs (
-      id, actor_id, actor_type, event_type, entity_type, entity_id, metadata_json, created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)`,
-    [
-      randomUUID(),
-      event.actorId ?? null,
-      event.actorType ?? "system",
-      event.eventType,
-      event.entityType,
-      event.entityId ?? null,
-      JSON.stringify(event.metadata ?? {}),
-      now(),
-    ],
-  );
+  await appendImmutableAuditLog(event);
 }
 
 function mapCandidateSourceType(candidate: EvidenceCandidate): SourceType {

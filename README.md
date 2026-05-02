@@ -44,6 +44,8 @@ Internal review queue UI now exists at `/app/review-queue`. It reads real query 
 
 Candidate rejection workflow foundation now exists at `POST /api/internal/review/candidate-rejections`. It requires authenticated reviewer identity, rejection reason, reviewer notes, database persistence, and writes an audit event. It does not delete candidate events or create fake reviewers.
 
+Audit immutability foundation now exists with append-only database triggers for `audit_logs` and hash-chain helpers for new audit events. This is a technical foundation only; it is not a compliance certification or legal guarantee.
+
 ## Scripts
 
 ```bash
@@ -65,6 +67,7 @@ npm run validate:connector-monitoring
 npm run validate:source-citation-deduplication
 npm run validate:review-queue-ui
 npm run validate:candidate-rejection-workflow
+npm run validate:audit-immutability
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -135,6 +138,7 @@ Internal endpoint access:
 - `db/migrations/0004_auth_rbac_foundation.sql`: planned PostgreSQL schema for real users, roles, and user-role assignments.
 - `db/migrations/0005_tenant_organization_scoping.sql`: planned PostgreSQL schema for organizations, memberships, and tenant-scoped evidence/audit columns.
 - `db/migrations/0006_source_citation_deduplication.sql`: planned PostgreSQL schema for canonical source keys and citation hashes.
+- `db/migrations/0008_audit_immutability_foundation.sql`: planned PostgreSQL schema/trigger foundation for append-only audit logs and event hashes.
 - `src/lib/db/client.ts`: server-only PostgreSQL client used only when `DATABASE_URL` is configured.
 - `src/lib/auth/*`: auth/RBAC helpers for password verification, signed session cookies, users, and route roles.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
@@ -154,6 +158,7 @@ Internal endpoint access:
 - `scripts/validate-source-citation-deduplication.mjs`: validates canonical source/citation deduplication foundations.
 - `scripts/validate-review-queue-ui.mjs`: validates the internal review queue reads real audit candidates and does not fake actions.
 - `scripts/validate-candidate-rejection-workflow.mjs`: validates rejection schema, required reviewer identity, notes, and audit event.
+- `scripts/validate-audit-immutability.mjs`: validates append-only audit trigger and hash-chain helper foundation.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -165,6 +170,7 @@ Internal endpoint access:
 - `docs/source-citation-deduplication.md`: explains exact-match source/citation deduplication and deferred merge review.
 - `docs/review-queue-ui.md`: explains the internal review queue empty state and disabled action boundary.
 - `docs/candidate-rejection-workflow.md`: explains the real candidate rejection workflow and no-deletion boundary.
+- `docs/audit-immutability-foundation.md`: explains append-only audit foundation and compliance limitations.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
