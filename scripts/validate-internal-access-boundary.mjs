@@ -36,8 +36,8 @@ assert.ok(
 
 assert.ok(
   proxy.includes("x-evidara-actor-id") &&
-  proxy.includes("x-evidara-actor-email") &&
-  proxy.includes("x-evidara-actor-roles"),
+    proxy.includes("x-evidara-actor-email") &&
+    proxy.includes("x-evidara-actor-roles"),
   "Proxy must forward verified actor context to internal routes."
 );
 
