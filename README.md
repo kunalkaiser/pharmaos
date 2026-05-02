@@ -38,6 +38,8 @@ Auth/RBAC foundation now exists with real user, role, password, login, logout, s
 
 Tenant/organization scoping foundation now exists with real organization and membership schema plus organization-aware sessions. No fake tenants are seeded. Full tenant filtering across every API remains a beta hardening requirement before external use.
 
+Source/citation deduplication foundation now exists with canonical source keys and citation hashes. Exact duplicate public sources/citations are reused by helpers, while ambiguous duplicate merge decisions remain a future human-review workflow.
+
 ## Scripts
 
 ```bash
@@ -56,6 +58,7 @@ npm run validate:production-persistence
 npm run validate:auth-rbac
 npm run validate:tenant-scoping
 npm run validate:connector-monitoring
+npm run validate:source-citation-deduplication
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -123,6 +126,7 @@ Internal endpoint access:
 - `db/migrations/0003_candidate_promotion_foundation.sql`: planned PostgreSQL schema for reviewed candidate promotion records.
 - `db/migrations/0004_auth_rbac_foundation.sql`: planned PostgreSQL schema for real users, roles, and user-role assignments.
 - `db/migrations/0005_tenant_organization_scoping.sql`: planned PostgreSQL schema for organizations, memberships, and tenant-scoped evidence/audit columns.
+- `db/migrations/0006_source_citation_deduplication.sql`: planned PostgreSQL schema for canonical source keys and citation hashes.
 - `src/lib/db/client.ts`: server-only PostgreSQL client used only when `DATABASE_URL` is configured.
 - `src/lib/auth/*`: auth/RBAC helpers for password verification, signed session cookies, users, and route roles.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.
@@ -139,6 +143,7 @@ Internal endpoint access:
 - `scripts/validate-auth-rbac.mjs`: validates auth/RBAC schema, login, session, and role-protection foundations without fake users.
 - `scripts/validate-tenant-scoping.mjs`: validates organization schema, membership setup, session organization context, and no fake tenants.
 - `scripts/validate-connector-monitoring.mjs`: validates internal connector health/monitoring boundaries.
+- `scripts/validate-source-citation-deduplication.mjs`: validates canonical source/citation deduplication foundations.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -147,6 +152,7 @@ Internal endpoint access:
 - `docs/production-persistence.md`: explains the B1 persistence boundary, migration path, environment variables, and remaining beta blockers.
 - `docs/auth-rbac-foundation.md`: explains the B2 auth/RBAC boundary and real-user setup.
 - `docs/tenant-organization-scoping.md`: explains the B3 organization boundary and remaining tenant filtering work.
+- `docs/source-citation-deduplication.md`: explains exact-match source/citation deduplication and deferred merge review.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 

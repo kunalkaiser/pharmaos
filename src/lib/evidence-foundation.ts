@@ -5,6 +5,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { EvidenceCandidate } from "@/lib/connectors/types";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
+import { canonicalSourceKey, citationDedupHash } from "@/lib/evidence-deduplication";
 
 const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? path.join(process.cwd(), ".evidara-data");
 const storageFile = path.join(storageDirectory, "evidence-foundation.json");
@@ -475,7 +476,10 @@ function appendAudit(store: EvidenceFoundationStore, event: Omit<AuditLog, "id" 
 
 export async function createEvidenceSource(input: CreateEvidenceSourceInput): Promise<EvidenceSource> {
   ensureSourceIdentifier(input);
+  const sourceCanonicalKey = canonicalSourceKey(input);
   if (hasDatabaseUrl()) {
+    const existing = await dbQuery("SELECT * FROM evidence_sources WHERE source_canonical_key = $1 LIMIT 1", [sourceCanonicalKey]);
+    if (existing.rows[0]) return mapSource(existing.rows[0]);
     const timestamp = now();
     const source: EvidenceSource = {
       id: randomUUID(),
@@ -487,8 +491,8 @@ export async function createEvidenceSource(input: CreateEvidenceSourceInput): Pr
     await dbQuery(
       `INSERT INTO evidence_sources (
         id, source_type, title, url, pmid, pmcid, doi, nct_id, fda_identifier,
-        publisher, publication_date, access_date, metadata_json, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15)`,
+        publisher, publication_date, access_date, metadata_json, created_at, updated_at, source_canonical_key
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16)`,
       [
         source.id,
         source.sourceType,
@@ -505,12 +509,15 @@ export async function createEvidenceSource(input: CreateEvidenceSourceInput): Pr
         JSON.stringify(source.metadata ?? {}),
         source.createdAt,
         source.updatedAt,
+        sourceCanonicalKey,
       ],
     );
     await appendDbAudit({ eventType: "evidence_source.created", entityType: "evidence_source", entityId: source.id });
     return source;
   }
   const store = await readStore();
+  const duplicate = store.evidenceSources.find((item) => canonicalSourceKey(item) === sourceCanonicalKey);
+  if (duplicate) return duplicate;
   const timestamp = now();
   const source: EvidenceSource = {
     id: randomUUID(),
@@ -526,9 +533,17 @@ export async function createEvidenceSource(input: CreateEvidenceSourceInput): Pr
 }
 
 export async function createCitation(input: CreateCitationInput): Promise<Citation> {
+  const citationHash = citationDedupHash({
+    evidenceSourceId: input.evidenceSourceId,
+    citationText: input.citationText,
+    sourceIdentifier: input.sourceIdentifier,
+    extractedField: input.extractedField,
+  });
   if (hasDatabaseUrl()) {
     const source = await dbQuery("SELECT id FROM evidence_sources WHERE id = $1", [input.evidenceSourceId]);
     if (!source.rows[0]) throw new Error(`Evidence source not found: ${input.evidenceSourceId}`);
+    const existing = await dbQuery("SELECT * FROM citations WHERE citation_hash = $1 LIMIT 1", [citationHash]);
+    if (existing.rows[0]) return mapCitation(existing.rows[0]);
     const citation: Citation = {
       id: randomUUID(),
       accessDate: input.accessDate ?? today(),
@@ -540,8 +555,8 @@ export async function createCitation(input: CreateCitationInput): Promise<Citati
     await dbQuery(
       `INSERT INTO citations (
         id, evidence_source_id, citation_text, source_identifier, access_date, extracted_field,
-        extraction_confidence, human_review_status, limitation_notes, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        extraction_confidence, human_review_status, limitation_notes, created_at, citation_hash
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         citation.id,
         citation.evidenceSourceId,
@@ -553,6 +568,7 @@ export async function createCitation(input: CreateCitationInput): Promise<Citati
         citation.humanReviewStatus,
         citation.limitationNotes ?? null,
         citation.createdAt,
+        citationHash,
       ],
     );
     await appendDbAudit({ eventType: "citation.created", entityType: "citation", entityId: citation.id });
@@ -560,6 +576,8 @@ export async function createCitation(input: CreateCitationInput): Promise<Citati
   }
   const store = await readStore();
   ensureSourceExists(store, input.evidenceSourceId);
+  const duplicate = store.citations.find((item) => citationDedupHash(item) === citationHash);
+  if (duplicate) return duplicate;
   const citation: Citation = {
     id: randomUUID(),
     accessDate: input.accessDate ?? today(),
