@@ -40,6 +40,29 @@ export async function getUserRoles(userId: string) {
   return result.rows.map((row) => row.role_key);
 }
 
+export async function getUserOrganizationMemberships(userId: string) {
+  const result = await dbQuery<{ organization_id: string; slug: string; name: string; role_key: UserRole }>(
+    `SELECT uo.organization_id, o.slug, o.name, uo.role_key
+     FROM user_organizations uo
+     JOIN organizations o ON o.id = uo.organization_id
+     WHERE uo.user_id = $1 AND o.status = 'active'
+     ORDER BY o.name, uo.role_key`,
+    [userId],
+  );
+  const byOrganization = new Map<string, { organizationId: string; slug: string; name: string; roles: UserRole[] }>();
+  for (const row of result.rows) {
+    const current = byOrganization.get(row.organization_id) ?? {
+      organizationId: row.organization_id,
+      slug: row.slug,
+      name: row.name,
+      roles: [],
+    };
+    current.roles.push(row.role_key);
+    byOrganization.set(row.organization_id, current);
+  }
+  return [...byOrganization.values()];
+}
+
 export async function markUserLogin(userId: string) {
   await dbQuery("UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1", [userId]);
 }

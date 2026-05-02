@@ -7,6 +7,7 @@ Phase B2 adds real auth/RBAC primitives without creating fake users, tenants, cu
 Implemented:
 
 - `users`, `roles`, and `user_roles` schema in `db/migrations/0004_auth_rbac_foundation.sql`
+- Organization memberships in `db/migrations/0005_tenant_organization_scoping.sql`
 - Password-backed login through `POST /api/auth/login`
 - HTTP-only signed workspace session cookie
 - `POST /api/auth/logout`
@@ -32,11 +33,13 @@ DATABASE_URL="postgres://..." \
 EVIDARA_USER_EMAIL="person@company.com" \
 EVIDARA_USER_PASSWORD="use-a-real-long-password" \
 EVIDARA_USER_FULL_NAME="Person Name" \
+EVIDARA_ORGANIZATION_NAME="Company Name" \
+EVIDARA_ORGANIZATION_SLUG="company-name" \
 EVIDARA_USER_ROLES="admin,reviewer" \
 npm run create:auth-user
 ```
 
-This command does not create demo users. It only creates or updates the user explicitly provided through environment variables.
+This command does not create demo users or fake tenants. It only creates or updates the user and organization explicitly provided through environment variables.
 
 ## Role Boundaries
 

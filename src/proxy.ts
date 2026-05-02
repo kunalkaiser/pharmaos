@@ -102,6 +102,8 @@ export async function proxy(request: NextRequest) {
     requestHeaders.set("x-evidara-actor-id", session.sub);
     requestHeaders.set("x-evidara-actor-email", session.email);
     requestHeaders.set("x-evidara-actor-roles", session.roles.join(","));
+    if (session.organizationId) requestHeaders.set("x-evidara-organization-id", session.organizationId);
+    if (session.organizationSlug) requestHeaders.set("x-evidara-organization-slug", session.organizationSlug);
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 

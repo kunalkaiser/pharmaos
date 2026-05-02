@@ -8,6 +8,8 @@ const allowedRoles = new Set(["admin", "reviewer", "analyst", "read_only"]);
 const email = process.env.EVIDARA_USER_EMAIL?.trim().toLowerCase();
 const password = process.env.EVIDARA_USER_PASSWORD ?? "";
 const fullName = process.env.EVIDARA_USER_FULL_NAME?.trim() || null;
+const organizationName = process.env.EVIDARA_ORGANIZATION_NAME?.trim();
+const organizationSlug = process.env.EVIDARA_ORGANIZATION_SLUG?.trim().toLowerCase();
 const roles = (process.env.EVIDARA_USER_ROLES ?? "read_only")
   .split(",")
   .map((role) => role.trim())
@@ -16,6 +18,7 @@ const roles = (process.env.EVIDARA_USER_ROLES ?? "read_only")
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
 if (!email) throw new Error("EVIDARA_USER_EMAIL is required.");
 if (password.length < 12) throw new Error("EVIDARA_USER_PASSWORD must be at least 12 characters.");
+if (!organizationName || !organizationSlug) throw new Error("EVIDARA_ORGANIZATION_NAME and EVIDARA_ORGANIZATION_SLUG are required.");
 if (!roles.length || roles.some((role) => !allowedRoles.has(role))) {
   throw new Error(`EVIDARA_USER_ROLES must contain only: ${[...allowedRoles].join(", ")}`);
 }
@@ -38,11 +41,24 @@ try {
       [email, fullName, passwordHash, salt],
     );
     const userId = userResult.rows[0].id;
+    const organizationResult = await client.query(
+      `INSERT INTO organizations (name, slug)
+       VALUES ($1,$2)
+       ON CONFLICT (slug)
+       DO UPDATE SET name = EXCLUDED.name, status = 'active', updated_at = NOW()
+       RETURNING id, slug`,
+      [organizationName, organizationSlug],
+    );
+    const organizationId = organizationResult.rows[0].id;
     for (const role of roles) {
       await client.query("INSERT INTO user_roles (user_id, role_key) VALUES ($1,$2) ON CONFLICT DO NOTHING", [userId, role]);
+      await client.query(
+        "INSERT INTO user_organizations (user_id, organization_id, role_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        [userId, organizationId, role],
+      );
     }
     await client.query("COMMIT");
-    console.log(`Created/updated EvidaraOS auth user ${email} with roles: ${roles.join(", ")}`);
+    console.log(`Created/updated EvidaraOS auth user ${email} in organization ${organizationSlug} with roles: ${roles.join(", ")}`);
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

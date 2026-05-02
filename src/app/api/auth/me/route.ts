@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     user: {
       id: session.sub,
       email: session.email,
+      organizationId: session.organizationId,
+      organizationSlug: session.organizationSlug,
       roles: session.roles,
     },
   });

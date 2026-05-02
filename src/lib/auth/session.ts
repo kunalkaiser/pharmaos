@@ -3,6 +3,8 @@ export type UserRole = "admin" | "reviewer" | "analyst" | "read_only" | "system"
 export type AuthSessionPayload = {
   sub: string;
   email: string;
+  organizationId?: string;
+  organizationSlug?: string;
   roles: UserRole[];
   iat: number;
   exp: number;
