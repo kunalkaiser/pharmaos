@@ -50,6 +50,8 @@ Internal report preview now exists at `/app/reports/[id]`. It renders only revie
 
 Reviewed-evidence PDF export now exists at `POST /api/internal/reports/[id]/export`. It generates a draft/internal PDF only when reviewed evidence records and sources exist, stores an export record when `DATABASE_URL` is configured, and writes an immutable audit event. It does not export unreviewed candidates or fake report sections.
 
+EpiEngine scoring v1 now exists at `POST /api/internal/epi-engine/score`. It scores reviewed evidence coverage and maturity only, persists a scoring run when `DATABASE_URL` is configured, and writes an immutable audit event. It does not generate autonomous recommendations, causal conclusions, medical advice, or regulatory advice.
+
 ## Scripts
 
 ```bash
@@ -74,6 +76,7 @@ npm run validate:candidate-rejection-workflow
 npm run validate:audit-immutability
 npm run validate:report-preview
 npm run validate:pdf-export
+npm run validate:epi-engine-scoring
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -129,6 +132,7 @@ These routes establish the future internal/admin boundary. They are scaffold-onl
 - `POST /api/internal/review/candidate-promotions`: promotes a real candidate into a reviewed citation and optional evidence record after internal review attestation.
 - `GET/POST /api/internal/review/candidate-rejections`: records real candidate rejection decisions with reviewer identity and audit event.
 - `POST /api/internal/reports/[id]/export`: generates a draft/internal reviewed-evidence PDF export.
+- `POST /api/internal/epi-engine/score`: computes reviewed-evidence-only EpiEngine v1 scoring.
 
 Internal endpoint access:
 
@@ -168,6 +172,7 @@ Internal endpoint access:
 - `scripts/validate-audit-immutability.mjs`: validates append-only audit trigger and hash-chain helper foundation.
 - `scripts/validate-report-preview.mjs`: validates reviewed-evidence-only report preview boundaries.
 - `scripts/validate-pdf-export.mjs`: validates reviewed-evidence-only PDF export, source appendix, export record, and audit event.
+- `scripts/validate-epi-engine-scoring.mjs`: validates reviewed-evidence-only EpiEngine scoring and audit boundaries.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -182,6 +187,7 @@ Internal endpoint access:
 - `docs/audit-immutability-foundation.md`: explains append-only audit foundation and compliance limitations.
 - `docs/report-preview.md`: explains reviewed-evidence-only internal report preview and PDF limitations.
 - `docs/pdf-export.md`: explains reviewed-evidence-only PDF export and remaining report-template limits.
+- `docs/epi-engine-scoring.md`: explains reviewed-evidence-only EpiEngine scoring v1 and safety limits.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 

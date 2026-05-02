@@ -25,6 +25,7 @@
     "validate:audit-immutability": "node scripts/validate-audit-immutability.mjs",
     "validate:report-preview": "node scripts/validate-report-preview.mjs",
     "validate:pdf-export": "node scripts/validate-pdf-export.mjs",
+    "validate:epi-engine-scoring": "node scripts/validate-epi-engine-scoring.mjs",
     "create:auth-user": "node scripts/create-auth-user.mjs",
     "validate:provenance-db": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/migrations/0001_citation_provenance_foundation.sql -f db/validation/0001_provenance_constraints.sql"
   },
