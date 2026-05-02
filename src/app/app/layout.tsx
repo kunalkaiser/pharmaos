@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 const productLinks = [
   { href: "/app", label: "Workspace" },
   { href: "/app/evidence-packets", label: "Evidence Packets" },
+  { href: "/app/review-queue", label: "Review Queue" },
   { href: "/app/sources", label: "Sources" },
   { href: "/app/reports/placeholder", label: "Reports" },
   { href: "/app/audit-log", label: "Audit Log" },

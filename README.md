@@ -40,6 +40,8 @@ Tenant/organization scoping foundation now exists with real organization and mem
 
 Source/citation deduplication foundation now exists with canonical source keys and citation hashes. Exact duplicate public sources/citations are reused by helpers, while ambiguous duplicate merge decisions remain a future human-review workflow.
 
+Internal review queue UI now exists at `/app/review-queue`. It reads real query audit candidate events if present and otherwise shows an honest empty state. It does not render fake rows and does not enable promotion/rejection actions until the explicit review workflow is implemented.
+
 ## Scripts
 
 ```bash
@@ -59,6 +61,7 @@ npm run validate:auth-rbac
 npm run validate:tenant-scoping
 npm run validate:connector-monitoring
 npm run validate:source-citation-deduplication
+npm run validate:review-queue-ui
 npm run create:auth-user
 npm run validate:provenance-db
 ```
@@ -81,6 +84,7 @@ These routes establish the future product boundary. They are scaffold-only pages
 - `/app`
 - `/app/evidence-packets`
 - `/app/evidence-packets/[id]`
+- `/app/review-queue`
 - `/app/sources`
 - `/app/reports/[id]`
 - `/app/audit-log`
@@ -144,6 +148,7 @@ Internal endpoint access:
 - `scripts/validate-tenant-scoping.mjs`: validates organization schema, membership setup, session organization context, and no fake tenants.
 - `scripts/validate-connector-monitoring.mjs`: validates internal connector health/monitoring boundaries.
 - `scripts/validate-source-citation-deduplication.mjs`: validates canonical source/citation deduplication foundations.
+- `scripts/validate-review-queue-ui.mjs`: validates the internal review queue reads real audit candidates and does not fake actions.
 - `scripts/create-auth-user.mjs`: creates or updates a real operator-provided user; it does not seed demo users.
 - `docs/product-boundary.md`: explains the public website, authenticated product workspace, and internal admin workspace boundary.
 - `docs/evidence-provenance-schema.md`: explains the evidence provenance schema, constraints, real-only evidence policy, and validation commands.
@@ -153,6 +158,7 @@ Internal endpoint access:
 - `docs/auth-rbac-foundation.md`: explains the B2 auth/RBAC boundary and real-user setup.
 - `docs/tenant-organization-scoping.md`: explains the B3 organization boundary and remaining tenant filtering work.
 - `docs/source-citation-deduplication.md`: explains exact-match source/citation deduplication and deferred merge review.
+- `docs/review-queue-ui.md`: explains the internal review queue empty state and disabled action boundary.
 - `docs/premium-website-visual-audit.md`: audits visual gaps and risks before redesign.
 - `docs/evidaraos-design-system-plan.md`: defines premium enterprise visual direction and tooling recommendations.
 
