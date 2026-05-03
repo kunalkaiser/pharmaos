@@ -15,7 +15,7 @@ export default function ProductWorkspaceLayout({ children }: { children: ReactNo
     <WorkspaceShell
       title="EvidaraOS Product Workspace"
       eyebrow="Auth required in future"
-      description="Future authenticated workspace for evidence packets, source review, report previews, and audit visibility."
+      description="Authenticated workspace for evidence packets, source review, report previews, and audit visibility."
       links={productLinks}
     >
       {children}
