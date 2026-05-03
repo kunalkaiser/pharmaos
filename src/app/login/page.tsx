@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/app";
@@ -47,6 +48,52 @@ export default function LoginPage() {
   }
 
   return (
+    <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+      <label className="block">
+        <span className="text-sm font-medium text-slate-700">Email</span>
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
+          placeholder="you@example.com"
+        />
+      </label>
+
+      <label className="block">
+        <span className="text-sm font-medium text-slate-700">Password</span>
+        <input
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
+          placeholder="Enter your password"
+        />
+      </label>
+
+      {error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Signing in..." : "Sign in to workspace"}
+      </button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">
       <div className="mx-auto flex min-h-[80vh] max-w-6xl items-center justify-center">
         <div className="grid w-full overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-2xl shadow-slate-950/60 md:grid-cols-[1.05fr_0.95fr]">
@@ -88,54 +135,20 @@ export default function LoginPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">
                 Authenticated access
               </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight">
-                Log in
-              </h2>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight">Log in</h2>
               <p className="mt-3 text-sm leading-6 text-slate-600">
                 Use the real user created in your local database. No demo accounts or fake users are used.
               </p>
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-                <label className="block">
-                  <span className="text-sm font-medium text-slate-700">Email</span>
-                  <input
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
-                    placeholder="you@example.com"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-medium text-slate-700">Password</span>
-                  <input
-                    type="password"
-                    required
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
-                    placeholder="Enter your password"
-                  />
-                </label>
-
-                {error ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
+              <Suspense
+                fallback={
+                  <div className="mt-8 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    Loading login form...
                   </div>
-                ) : null}
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/20 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {loading ? "Signing in..." : "Sign in to workspace"}
-                </button>
-              </form>
+                }
+              >
+                <LoginForm />
+              </Suspense>
 
               <p className="mt-6 text-center text-xs leading-5 text-slate-500">
                 This is real authentication against the configured database-backed auth system.
@@ -143,9 +156,9 @@ export default function LoginPage() {
               </p>
 
               <div className="mt-8 text-center">
-                <a href="/" className="text-sm font-semibold text-cyan-700 hover:text-cyan-900">
+                <Link href="/" className="text-sm font-semibold text-cyan-700 hover:text-cyan-900">
                   Return to public EvidaraOS site
-                </a>
+                </Link>
               </div>
             </div>
           </section>
