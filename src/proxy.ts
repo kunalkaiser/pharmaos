@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { allowedRolesForPath, hasRole } from "@/lib/auth/rbac";
 import { authSessionCookieName, verifyAuthSession } from "@/lib/auth/session";
 
-const protectedPrefixes = ["/app", "/admin", "/api/internal"];
+const protectedPrefixes = ["/admin", "/api/internal"];
 const internalAccessCookie = "evidara_internal_access";
 const tokenHeader = "x-evidara-internal-token";
 
