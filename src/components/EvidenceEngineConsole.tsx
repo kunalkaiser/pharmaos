@@ -64,7 +64,11 @@ export function EvidenceEngineConsole() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/internal/evidence-engine/chains", { cache: "no-store" })
+    const accessToken = new URLSearchParams(window.location.search).get("access_token") ?? "";
+    fetch("/api/internal/evidence-engine/chains", {
+      cache: "no-store",
+      headers: accessToken ? { "x-evidara-internal-token": accessToken } : undefined,
+    })
       .then((response) => response.json() as Promise<ChainsResponse>)
       .then((payload) => {
         if (cancelled) return;
@@ -94,7 +98,12 @@ export function EvidenceEngineConsole() {
     try {
       const response = await fetch("/api/internal/evidence-engine/run", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(new URLSearchParams(window.location.search).get("access_token")
+            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
+            : {}),
+        },
         body: JSON.stringify({
           chain_id: selectedChain.id,
           question,

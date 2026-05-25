@@ -24,7 +24,13 @@ function tokenFromRequest(request: NextRequest) {
       .map((item) => item.trim())
       .find((item) => item.startsWith(`${internalAccessCookie}=`))
       ?.slice(internalAccessCookie.length + 1) ?? "";
-  return request.headers.get(tokenHeader) ?? bearerToken ?? request.cookies.get(internalAccessCookie)?.value ?? rawCookieToken;
+  return (
+    request.headers.get(tokenHeader) ??
+    bearerToken ??
+    request.nextUrl.searchParams.get("access_token") ??
+    request.cookies.get(internalAccessCookie)?.value ??
+    rawCookieToken
+  );
 }
 
 function authSessionFromRequest(request: NextRequest) {
