@@ -18,7 +18,9 @@ export function GET(request: Request) {
     );
   }
 
-  const redirectUrl = new URL("/app", url.origin);
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
+  const forwardedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
+  const redirectUrl = new URL("/app", `${forwardedProto}://${forwardedHost}`);
   const response = NextResponse.redirect(redirectUrl);
   response.cookies.set(internalAccessCookie, configuredToken, {
     httpOnly: true,

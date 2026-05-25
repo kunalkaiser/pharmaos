@@ -17,7 +17,14 @@ function isApiPath(pathname: string) {
 function tokenFromRequest(request: NextRequest) {
   const authorization = request.headers.get("authorization");
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
-  return request.headers.get(tokenHeader) ?? bearerToken ?? request.cookies.get(internalAccessCookie)?.value ?? "";
+  const rawCookieToken =
+    request.headers
+      .get("cookie")
+      ?.split(";")
+      .map((item) => item.trim())
+      .find((item) => item.startsWith(`${internalAccessCookie}=`))
+      ?.slice(internalAccessCookie.length + 1) ?? "";
+  return request.headers.get(tokenHeader) ?? bearerToken ?? request.cookies.get(internalAccessCookie)?.value ?? rawCookieToken;
 }
 
 function authSessionFromRequest(request: NextRequest) {
