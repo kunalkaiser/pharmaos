@@ -5,7 +5,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
 
-const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? path.join(process.cwd(), ".evidara-data");
+const defaultStorageDirectory = process.env.RAILWAY_ENVIRONMENT ? path.join("/tmp", "evidara-data") : path.join(process.cwd(), ".evidara-data");
+const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? defaultStorageDirectory;
 const storageFile = path.join(storageDirectory, "query-audit.json");
 
 export type QueryRunStatus = "started" | "completed" | "partial_failure" | "failed";
@@ -128,9 +129,14 @@ async function readStore(): Promise<QueryAuditStore> {
 
 async function writeStore(store: QueryAuditStore) {
   await mkdir(storageDirectory, { recursive: true });
-  const temporaryFile = `${storageFile}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporaryFile, `${JSON.stringify(store, null, 2)}\n`);
-  await rename(temporaryFile, storageFile);
+  const temporaryFile = `${storageFile}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryFile, `${JSON.stringify(store, null, 2)}\n`);
+    await rename(temporaryFile, storageFile);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[query-audit] Local preview audit store write failed; continuing without durable preview persistence. ${message}`);
+  }
 }
 
 function hashText(value: string) {
