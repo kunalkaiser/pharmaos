@@ -3,6 +3,51 @@ import { Icon } from "@/components/Icon";
 import { accentStyles } from "@/components/DetailPanel";
 import { audienceCards, enterpriseExpectations, homepagePillars, intelligenceUseCases, platformMetrics } from "@/lib/evidara-content";
 
+const workspacePreviewHref = "/api/preview-access?token=evidaraos-preview-access";
+
+const liveAnalysisChains = [
+  {
+    name: "Full SLR",
+    description: "PICO protocol, source search, deduplication, PRISMA, GRADE and RoB 2 scaffolds.",
+  },
+  {
+    name: "HEOR Foundation",
+    description: "Source-linked model inputs, assumption register, evidence readiness and gaps.",
+  },
+  {
+    name: "Payer Brief",
+    description: "Value questions, claim traceability, payer evidence gaps and source links.",
+  },
+  {
+    name: "Safety Review",
+    description: "FAERS signal table, safety extraction, discontinuation signals and limitations.",
+  },
+  {
+    name: "Regulatory",
+    description: "Label retrieval, benefit-risk table, uncertainty register and language guardrails.",
+  },
+  {
+    name: "Repurposing",
+    description: "Candidate hypotheses, evidence path notes and false-positive review checks.",
+  },
+  {
+    name: "Genomics",
+    description: "Gene evidence table, target-disease overlap and genomics readiness checklist.",
+  },
+  {
+    name: "Trial Intelligence",
+    description: "ClinicalTrials.gov retrieval, trial status counts and eligibility pattern table.",
+  },
+  {
+    name: "Full Discovery",
+    description: "Cross-module run across SLR, safety, HEOR, regulatory, repurposing and genomics.",
+  },
+  {
+    name: "Rapid Scan",
+    description: "Fast protocol, small search, deduplication and top evidence table.",
+  },
+];
+
 export default function Home() {
   return (
     <main className="bg-[#f6f8fb]">
@@ -23,12 +68,12 @@ export default function Home() {
               EvidaraOS combines evidence retrieval, dynamic chain orchestration, agentic synthesis, and governance controls so teams can see how an answer was produced before they rely on it.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/architecture" className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
-                Explore Architecture
+              <Link href={workspacePreviewHref} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+                Launch Evidence Workspace
                 <Icon name="arrow" className="ml-2 h-4 w-4" />
               </Link>
-              <Link href="/query-journey" className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
-                See Query Journey
+              <Link href="/architecture" className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
+                See Platform Architecture
               </Link>
             </div>
           </div>
@@ -37,16 +82,19 @@ export default function Home() {
             <div className="rounded-[1.5rem] bg-white p-5">
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <Icon name="ask" className="h-5 w-5 text-slate-400" />
-                <p className="flex-1 text-sm text-slate-500">Evaluate semaglutide for obstructive sleep apnea...</p>
-                <Link href="/query-journey" className="rounded-full bg-teal-600 px-4 py-2 text-xs font-semibold text-white">
-                  Ask
+                <p className="flex-1 text-sm text-slate-500">Run evidence workflow for dupilumab in moderate-to-severe atopic dermatitis...</p>
+                <Link href={workspacePreviewHref} className="rounded-full bg-teal-600 px-4 py-2 text-xs font-semibold text-white">
+                  Open
                 </Link>
               </div>
 
               <div className="mt-5 rounded-3xl border border-slate-200 bg-[#f8fafc] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Visible pathway</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Live workspace bridge</p>
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Python engine connected</span>
+                </div>
                 <div className="mt-4 space-y-3">
-                  {["Intent", "Chains", "Sources", "Classification", "Governed output"].map((label, index) => (
+                  {["Question intake", "Analysis chain", "Public sources", "Human review", "Report artifact"].map((label, index) => (
                     <div key={label} className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{index + 1}</div>
                       <div className="h-2 flex-1 rounded-full bg-slate-100">
@@ -59,10 +107,11 @@ export default function Home() {
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {["Source fitness", "Evidence retrieval", "Dynamic chains", "Audit trail"].map((label, index) => (
+                {["Full SLR", "Safety Review", "HEOR Foundation", "Payer Brief"].map((label, index) => (
                   <div key={label} className={index === 0 ? "rounded-2xl border border-blue-200 bg-blue-50 p-4" : index === 1 ? "rounded-2xl border border-violet-200 bg-violet-50 p-4" : index === 2 ? "rounded-2xl border border-teal-200 bg-teal-50 p-4" : "rounded-2xl border border-orange-200 bg-orange-50 p-4"}>
-                    <Icon name={label === "Evidence retrieval" ? "database" : label === "Audit trail" ? "audit" : label === "Source fitness" ? "target" : "chain"} className="h-5 w-5 text-teal-700" />
+                    <Icon name={label === "Safety Review" ? "database" : label === "Payer Brief" ? "audit" : label === "Full SLR" ? "target" : "chain"} className="h-5 w-5 text-teal-700" />
                     <p className="mt-3 text-sm font-semibold text-slate-900">{label}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">Available in workspace</p>
                   </div>
                 ))}
               </div>
@@ -80,6 +129,48 @@ export default function Home() {
               <p className="mt-2 text-sm leading-6 text-slate-300">{metric.copy}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="border-b border-slate-200 bg-white px-5 py-16 md:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid gap-8 lg:grid-cols-[0.78fr_1.22fr]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Product workspace</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">The working Evidence Engine is surfaced here.</h2>
+              <p className="mt-4 text-base leading-7 text-slate-600">
+                The deployed workspace connects the frontend to the Python evidence engine. It produces workflow artifacts and evidence candidates for human review, not final clinical claims.
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <Link href={workspacePreviewHref} className="inline-flex items-center justify-center rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+                  Launch Workspace
+                  <Icon name="arrow" className="ml-2 h-4 w-4" />
+                </Link>
+                <Link href="/evidence-engine" className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
+                  Review Engine Design
+                </Link>
+              </div>
+              <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+                Candidate-only mode is intentional. Human review, promotion and governance checks remain required before evidence can be used as a reviewed package.
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {liveAnalysisChains.map((chain) => (
+                <Link key={chain.name} href={workspacePreviewHref} className="group rounded-3xl border border-slate-200 bg-[#f8fafc] p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-white hover:shadow-md">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-base font-semibold text-slate-950">{chain.name}</h3>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">Available</span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{chain.description}</p>
+                  <p className="mt-4 inline-flex items-center text-sm font-semibold text-teal-800">
+                    Run in workspace
+                    <Icon name="arrow" className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5" />
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

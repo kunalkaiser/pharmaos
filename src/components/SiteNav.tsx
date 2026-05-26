@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+const workspacePreviewHref = "/api/preview-access?token=evidaraos-preview-access";
+
 const links = [
   { href: "/", label: "Platform" },
   { href: "/solutions", label: "Solutions" },
@@ -25,6 +27,9 @@ export function SiteNav() {
             </Link>
           ))}
         </div>
+        <Link href={workspacePreviewHref} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
+          Launch Workspace
+        </Link>
         <Link href="/demo" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
           Request Access
         </Link>
