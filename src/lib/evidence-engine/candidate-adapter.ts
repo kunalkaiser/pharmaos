@@ -26,6 +26,7 @@ const sourceDisplayNames: Record<string, string> = {
   dailymed: "DailyMed",
   rxnorm: "RxNorm",
   fda_label: "FDA label",
+  ncbi_gene: "NCBI Gene",
   python_engine: "EvidaraOS Python Engine",
 };
 
@@ -77,6 +78,7 @@ function normalizeSourceProvider(value: string) {
   if (normalized.includes("openfda")) return "openfda";
   if (normalized.includes("dailymed")) return "dailymed";
   if (normalized.includes("rxnorm")) return "rxnorm";
+  if (normalized.includes("ncbi_gene") || normalized.includes("gene")) return "ncbi_gene";
   if (normalized.includes("fda")) return "fda_label";
   return normalized || "python_engine";
 }
@@ -85,6 +87,7 @@ function sourceCategory(provider: string): EvidenceCandidate["sourceCategory"] {
   if (provider === "clinicaltrials" || provider === "clinicaltrials_gov") return "clinical_trials";
   if (provider === "openfda" || provider === "openfda_faers") return "drug_safety";
   if (provider === "dailymed" || provider === "fda_label") return "drug_label";
+  if (provider === "ncbi_gene") return "genomics";
   if (provider === "rxnorm") return "terminology";
   return "literature";
 }
@@ -93,6 +96,7 @@ function sourceType(provider: string): EvidenceCandidate["sourceType"] {
   if (provider === "clinicaltrials" || provider === "clinicaltrials_gov") return "clinical_trial";
   if (provider === "openfda" || provider === "openfda_faers") return "adverse_event";
   if (provider === "dailymed" || provider === "fda_label") return "drug_label";
+  if (provider === "ncbi_gene") return "genomic_dataset";
   if (provider === "rxnorm") return "terminology";
   return "literature";
 }
@@ -104,6 +108,7 @@ function inferProvider(record: RawRecord, url: string) {
   if (firstText(record, ["nct_id", "nctId", "nct_number"], 80) || /clinicaltrials\.gov/i.test(url)) return "clinicaltrials";
   if (/api\.fda\.gov|openfda/i.test(url)) return "openfda";
   if (/dailymed\.nlm\.nih\.gov/i.test(url)) return "dailymed";
+  if (/ncbi\.nlm\.nih\.gov\/gene/i.test(url)) return "ncbi_gene";
   if (firstText(record, ["doi", "DOI"], 220) || /doi\.org/i.test(url)) return "crossref";
   return "python_engine";
 }

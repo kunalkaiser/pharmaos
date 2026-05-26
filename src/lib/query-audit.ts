@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
 
@@ -118,13 +118,19 @@ async function readStore(): Promise<QueryAuditStore> {
     return { ...initialStore(), ...(JSON.parse(content) as QueryAuditStore) };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return initialStore();
+    if (error instanceof SyntaxError) {
+      console.warn("[query-audit] Local preview audit store is not valid JSON; starting a fresh in-memory-shaped store.");
+      return initialStore();
+    }
     throw error;
   }
 }
 
 async function writeStore(store: QueryAuditStore) {
   await mkdir(storageDirectory, { recursive: true });
-  await writeFile(storageFile, `${JSON.stringify(store, null, 2)}\n`);
+  const temporaryFile = `${storageFile}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(temporaryFile, `${JSON.stringify(store, null, 2)}\n`);
+  await rename(temporaryFile, storageFile);
 }
 
 function hashText(value: string) {
@@ -148,6 +154,11 @@ function redactObject(input?: Record<string, unknown>) {
   if (!input) return undefined;
   const entries = Object.entries(input).map(([key, value]) => [key, /key|token|secret|authorization|apikey/i.test(key) ? "[redacted]" : value]);
   return Object.fromEntries(entries);
+}
+
+function warnDatabaseFallback(operation: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[query-audit] ${operation} failed against Postgres; falling back to local preview audit store. ${message}`);
 }
 
 type QueryRunRow = {
@@ -283,26 +294,30 @@ export async function startQueryRun(input: {
     createdAt: timestamp,
   };
   if (hasDatabaseUrl()) {
-    await dbQuery(
-      `INSERT INTO query_runs (
-        id, query_text, query_hash, normalized_query, initiated_at, status, actor_type,
-        actor_id, access_context, live_retrieval, generated_claims, candidate_only, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,TRUE,$11)`,
-      [
-        queryRun.id,
-        queryRun.queryText,
-        queryRun.queryHash,
-        queryRun.normalizedQuery,
-        queryRun.initiatedAt,
-        queryRun.status,
-        queryRun.actorType,
-        queryRun.actorId ?? null,
-        queryRun.accessContext,
-        queryRun.liveRetrieval,
-        queryRun.createdAt,
-      ],
-    );
-    return queryRun;
+    try {
+      await dbQuery(
+        `INSERT INTO query_runs (
+          id, query_text, query_hash, normalized_query, initiated_at, status, actor_type,
+          actor_id, access_context, live_retrieval, generated_claims, candidate_only, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,FALSE,TRUE,$11)`,
+        [
+          queryRun.id,
+          queryRun.queryText,
+          queryRun.queryHash,
+          queryRun.normalizedQuery,
+          queryRun.initiatedAt,
+          queryRun.status,
+          queryRun.actorType,
+          queryRun.actorId ?? null,
+          queryRun.accessContext,
+          queryRun.liveRetrieval,
+          queryRun.createdAt,
+        ],
+      );
+      return queryRun;
+    } catch (error) {
+      warnDatabaseFallback("startQueryRun", error);
+    }
   }
   const store = await readStore();
   store.queryRuns.push(queryRun);
@@ -317,23 +332,27 @@ export async function recordQueryRunStep(input: Omit<QueryRunStep, "id" | "start
     ...input,
   };
   if (hasDatabaseUrl()) {
-    await dbQuery(
-      `INSERT INTO query_run_steps (
-        id, query_run_id, step_order, step_name, step_type, started_at, completed_at, status, notes
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [
-        step.id,
-        step.queryRunId,
-        step.stepOrder,
-        step.stepName,
-        step.stepType,
-        step.startedAt,
-        step.completedAt ?? null,
-        step.status,
-        step.notes ?? null,
-      ],
-    );
-    return step;
+    try {
+      await dbQuery(
+        `INSERT INTO query_run_steps (
+          id, query_run_id, step_order, step_name, step_type, started_at, completed_at, status, notes
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          step.id,
+          step.queryRunId,
+          step.stepOrder,
+          step.stepName,
+          step.stepType,
+          step.startedAt,
+          step.completedAt ?? null,
+          step.status,
+          step.notes ?? null,
+        ],
+      );
+      return step;
+    } catch (error) {
+      warnDatabaseFallback("recordQueryRunStep", error);
+    }
   }
   const store = await readStore();
   store.queryRunSteps.push(step);
@@ -350,25 +369,29 @@ export async function recordSourceEvent(input: Omit<QuerySourceEvent, "id" | "re
     requestParamsRedacted: redactObject(input.requestParamsRedacted),
   };
   if (hasDatabaseUrl()) {
-    await dbQuery(
-      `INSERT INTO query_source_events (
-        id, query_run_id, provider_id, endpoint_called, request_url_redacted,
-        request_params_redacted, status_code, result_count, error_message, retrieved_at
-      ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`,
-      [
-        event.id,
-        event.queryRunId,
-        event.providerId,
-        event.endpointCalled ?? null,
-        event.requestUrlRedacted ?? null,
-        event.requestParamsRedacted ? JSON.stringify(event.requestParamsRedacted) : null,
-        event.statusCode ?? null,
-        event.resultCount,
-        event.errorMessage ?? null,
-        event.retrievedAt,
-      ],
-    );
-    return event;
+    try {
+      await dbQuery(
+        `INSERT INTO query_source_events (
+          id, query_run_id, provider_id, endpoint_called, request_url_redacted,
+          request_params_redacted, status_code, result_count, error_message, retrieved_at
+        ) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`,
+        [
+          event.id,
+          event.queryRunId,
+          event.providerId,
+          event.endpointCalled ?? null,
+          event.requestUrlRedacted ?? null,
+          event.requestParamsRedacted ? JSON.stringify(event.requestParamsRedacted) : null,
+          event.statusCode ?? null,
+          event.resultCount,
+          event.errorMessage ?? null,
+          event.retrievedAt,
+        ],
+      );
+      return event;
+    } catch (error) {
+      warnDatabaseFallback("recordSourceEvent", error);
+    }
   }
   const store = await readStore();
   store.querySourceEvents.push(event);
@@ -387,27 +410,31 @@ export async function recordCandidateEvents(queryRunId: string, candidates: Quer
     generatedClaim: false as const,
   }));
   if (hasDatabaseUrl()) {
-    for (const event of events) {
-      await dbQuery(
-        `INSERT INTO query_candidate_events (
-          id, query_run_id, candidate_id, source_provider, source_identifier, source_title,
-          source_url, candidate_hash, generated_claim, promotion_status, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10)`,
-        [
-          event.id,
-          event.queryRunId,
-          event.candidateId,
-          event.sourceProvider,
-          event.sourceIdentifier ?? null,
-          event.sourceTitle,
-          event.sourceUrl,
-          event.candidateHash,
-          event.promotionStatus,
-          event.createdAt,
-        ],
-      );
+    try {
+      for (const event of events) {
+        await dbQuery(
+          `INSERT INTO query_candidate_events (
+            id, query_run_id, candidate_id, source_provider, source_identifier, source_title,
+            source_url, candidate_hash, generated_claim, promotion_status, created_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,FALSE,$9,$10)`,
+          [
+            event.id,
+            event.queryRunId,
+            event.candidateId,
+            event.sourceProvider,
+            event.sourceIdentifier ?? null,
+            event.sourceTitle,
+            event.sourceUrl,
+            event.candidateHash,
+            event.promotionStatus,
+            event.createdAt,
+          ],
+        );
+      }
+      return events;
+    } catch (error) {
+      warnDatabaseFallback("recordCandidateEvents", error);
     }
-    return events;
   }
   const store = await readStore();
   store.queryCandidateEvents.push(...events);
@@ -422,21 +449,25 @@ export async function recordQueryError(input: Omit<QueryError, "id" | "createdAt
     ...input,
   };
   if (hasDatabaseUrl()) {
-    await dbQuery(
-      `INSERT INTO query_errors (
-        id, query_run_id, provider_id, error_type, error_message, recoverable, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [
-        error.id,
-        error.queryRunId,
-        error.providerId ?? null,
-        error.errorType,
-        error.errorMessage,
-        error.recoverable,
-        error.createdAt,
-      ],
-    );
-    return error;
+    try {
+      await dbQuery(
+        `INSERT INTO query_errors (
+          id, query_run_id, provider_id, error_type, error_message, recoverable, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          error.id,
+          error.queryRunId,
+          error.providerId ?? null,
+          error.errorType,
+          error.errorMessage,
+          error.recoverable,
+          error.createdAt,
+        ],
+      );
+      return error;
+    } catch (dbError) {
+      warnDatabaseFallback("recordQueryError", dbError);
+    }
   }
   const store = await readStore();
   store.queryErrors.push(error);
@@ -446,29 +477,50 @@ export async function recordQueryError(input: Omit<QueryError, "id" | "createdAt
 
 export async function completeQueryRun(queryRunId: string, status: Exclude<QueryRunStatus, "started">, snapshot?: Record<string, unknown>) {
   if (hasDatabaseUrl()) {
-    const completedAt = now();
-    const result = await dbQuery<QueryRunRow>(
-      `UPDATE query_runs SET status = $2, completed_at = $3 WHERE id = $1 RETURNING *`,
-      [queryRunId, status, completedAt],
-    );
-    const row = result.rows[0];
-    if (!row) throw new Error(`Query run not found: ${queryRunId}`);
-
-    if (snapshot) {
-      const snapshotString = JSON.stringify(snapshot);
-      await dbQuery(
-        `INSERT INTO query_audit_snapshots (
-          id, query_run_id, snapshot_json, snapshot_hash, created_at
-        ) VALUES ($1,$2,$3::jsonb,$4,$5)`,
-        [randomUUID(), queryRunId, snapshotString, hashText(snapshotString), now()],
+    try {
+      const completedAt = now();
+      const result = await dbQuery<QueryRunRow>(
+        `UPDATE query_runs SET status = $2, completed_at = $3 WHERE id = $1 RETURNING *`,
+        [queryRunId, status, completedAt],
       );
-    }
+      const row = result.rows[0];
+      if (!row) throw new Error(`Query run not found: ${queryRunId}`);
 
-    return mapQueryRun(row);
+      if (snapshot) {
+        const snapshotString = JSON.stringify(snapshot);
+        await dbQuery(
+          `INSERT INTO query_audit_snapshots (
+            id, query_run_id, snapshot_json, snapshot_hash, created_at
+          ) VALUES ($1,$2,$3::jsonb,$4,$5)`,
+          [randomUUID(), queryRunId, snapshotString, hashText(snapshotString), now()],
+        );
+      }
+
+      return mapQueryRun(row);
+    } catch (error) {
+      warnDatabaseFallback("completeQueryRun", error);
+    }
   }
   const store = await readStore();
-  const queryRun = store.queryRuns.find((item) => item.id === queryRunId);
-  if (!queryRun) throw new Error(`Query run not found: ${queryRunId}`);
+  let queryRun = store.queryRuns.find((item) => item.id === queryRunId);
+  if (!queryRun) {
+    const timestamp = now();
+    queryRun = {
+      id: queryRunId,
+      queryText: "Recovered preview audit run",
+      queryHash: hashText(queryRunId),
+      normalizedQuery: "recovered-preview-audit-run",
+      initiatedAt: timestamp,
+      status: "started",
+      actorType: "system",
+      accessContext: "internal_api",
+      liveRetrieval: false,
+      generatedClaims: false,
+      candidateOnly: true,
+      createdAt: timestamp,
+    };
+    store.queryRuns.push(queryRun);
+  }
   queryRun.status = status;
   queryRun.completedAt = now();
 
@@ -489,8 +541,12 @@ export async function completeQueryRun(queryRunId: string, status: Exclude<Query
 
 export async function listQueryRuns() {
   if (hasDatabaseUrl()) {
-    const result = await dbQuery<QueryRunRow>("SELECT * FROM query_runs ORDER BY initiated_at DESC LIMIT 100");
-    return result.rows.map(mapQueryRun);
+    try {
+      const result = await dbQuery<QueryRunRow>("SELECT * FROM query_runs ORDER BY initiated_at DESC LIMIT 100");
+      return result.rows.map(mapQueryRun);
+    } catch (error) {
+      warnDatabaseFallback("listQueryRuns", error);
+    }
   }
   const store = await readStore();
   return store.queryRuns.sort((a, b) => b.initiatedAt.localeCompare(a.initiatedAt));
@@ -498,26 +554,30 @@ export async function listQueryRuns() {
 
 export async function getQueryRunAuditTrail(queryRunId: string) {
   if (hasDatabaseUrl()) {
-    const queryRunResult = await dbQuery<QueryRunRow>("SELECT * FROM query_runs WHERE id = $1", [queryRunId]);
-    const queryRun = queryRunResult.rows[0];
-    if (!queryRun) return null;
+    try {
+      const queryRunResult = await dbQuery<QueryRunRow>("SELECT * FROM query_runs WHERE id = $1", [queryRunId]);
+      const queryRun = queryRunResult.rows[0];
+      if (!queryRun) return null;
 
-    const [steps, sourceEvents, candidateEvents, errors, snapshots] = await Promise.all([
-      dbQuery("SELECT * FROM query_run_steps WHERE query_run_id = $1 ORDER BY step_order, started_at", [queryRunId]),
-      dbQuery("SELECT * FROM query_source_events WHERE query_run_id = $1 ORDER BY retrieved_at", [queryRunId]),
-      dbQuery("SELECT * FROM query_candidate_events WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
-      dbQuery("SELECT * FROM query_errors WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
-      dbQuery("SELECT * FROM query_audit_snapshots WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
-    ]);
+      const [steps, sourceEvents, candidateEvents, errors, snapshots] = await Promise.all([
+        dbQuery("SELECT * FROM query_run_steps WHERE query_run_id = $1 ORDER BY step_order, started_at", [queryRunId]),
+        dbQuery("SELECT * FROM query_source_events WHERE query_run_id = $1 ORDER BY retrieved_at", [queryRunId]),
+        dbQuery("SELECT * FROM query_candidate_events WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
+        dbQuery("SELECT * FROM query_errors WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
+        dbQuery("SELECT * FROM query_audit_snapshots WHERE query_run_id = $1 ORDER BY created_at", [queryRunId]),
+      ]);
 
-    return {
-      queryRun: mapQueryRun(queryRun),
-      steps: steps.rows.map(mapStep),
-      sourceEvents: sourceEvents.rows.map(mapSourceEvent),
-      candidateEvents: candidateEvents.rows.map(mapCandidateEvent),
-      errors: errors.rows.map(mapQueryError),
-      snapshots: snapshots.rows.map(mapSnapshot),
-    };
+      return {
+        queryRun: mapQueryRun(queryRun),
+        steps: steps.rows.map(mapStep),
+        sourceEvents: sourceEvents.rows.map(mapSourceEvent),
+        candidateEvents: candidateEvents.rows.map(mapCandidateEvent),
+        errors: errors.rows.map(mapQueryError),
+        snapshots: snapshots.rows.map(mapSnapshot),
+      };
+    } catch (error) {
+      warnDatabaseFallback("getQueryRunAuditTrail", error);
+    }
   }
   const store = await readStore();
   const queryRun = store.queryRuns.find((item) => item.id === queryRunId);
