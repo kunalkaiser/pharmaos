@@ -1,9 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { dbQuery, hasDatabaseUrl } from "@/lib/db/client";
 import { appendImmutableAuditLog } from "@/lib/audit-integrity";
 
 export const runtime = "nodejs";
+
+const storageDirectory = process.env.EVIDARA_STORAGE_DIR ?? path.join(process.cwd(), ".evidara-data");
+const storageFile = path.join(storageDirectory, "candidate-rejections.json");
 
 const allowedReasons = new Set([
   "not_relevant",
@@ -19,9 +24,42 @@ function candidateHash(input: { sourceProvider: string; sourceIdentifier?: strin
   return createHash("sha256").update(`${input.sourceProvider}|${input.sourceIdentifier ?? ""}|${input.sourceUrl}`).digest("hex");
 }
 
+type LocalCandidateRejection = {
+  id: string;
+  queryRunId?: string;
+  candidateId: string;
+  candidateHash: string;
+  sourceProvider: string;
+  sourceIdentifier?: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  rejectionReason: string;
+  reviewerNotes: string;
+  reviewerId: string;
+  reviewerEmail?: string;
+  rejectedAt: string;
+  createdAt: string;
+  deletedCandidate: false;
+};
+
+async function readLocalRejections(): Promise<LocalCandidateRejection[]> {
+  try {
+    const content = await readFile(storageFile, "utf8");
+    return JSON.parse(content) as LocalCandidateRejection[];
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function writeLocalRejections(rejections: LocalCandidateRejection[]) {
+  await mkdir(storageDirectory, { recursive: true });
+  await writeFile(storageFile, `${JSON.stringify(rejections, null, 2)}\n`);
+}
+
 export async function GET(request: Request) {
   if (!hasDatabaseUrl()) {
-    return NextResponse.json({ ok: true, rejections: [], persistence: "not_configured", fakeRows: false });
+    return NextResponse.json({ ok: true, rejections: await readLocalRejections(), persistence: "local-dev-json", fakeRows: false });
   }
   const organizationId = request.headers.get("x-evidara-organization-id");
   const result = await dbQuery(
@@ -36,10 +74,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!hasDatabaseUrl()) {
-    return NextResponse.json({ ok: false, error: "Candidate rejection requires DATABASE_URL persistence." }, { status: 503 });
-  }
-
   const reviewerId = request.headers.get("x-evidara-actor-id");
   const reviewerEmail = request.headers.get("x-evidara-actor-email");
   const organizationId = request.headers.get("x-evidara-organization-id");
@@ -75,6 +109,45 @@ export async function POST(request: Request) {
     sourceUrl: body.sourceUrl,
   });
   const rejectedAt = new Date().toISOString();
+
+  if (!hasDatabaseUrl()) {
+    const rejection: LocalCandidateRejection = {
+      id,
+      queryRunId: body.queryRunId,
+      candidateId: body.candidateId,
+      candidateHash: hash,
+      sourceProvider: body.sourceProvider,
+      sourceIdentifier: body.sourceIdentifier,
+      sourceTitle: body.sourceTitle,
+      sourceUrl: body.sourceUrl,
+      rejectionReason: body.rejectionReason,
+      reviewerNotes: body.reviewerNotes.trim(),
+      reviewerId,
+      reviewerEmail: reviewerEmail ?? undefined,
+      rejectedAt,
+      createdAt: rejectedAt,
+      deletedCandidate: false,
+    };
+    const rejections = await readLocalRejections();
+    rejections.unshift(rejection);
+    await writeLocalRejections(rejections.slice(0, 500));
+
+    return NextResponse.json({
+      ok: true,
+      rejection: {
+        id,
+        candidateId: body.candidateId,
+        candidateHash: hash,
+        rejectionReason: body.rejectionReason,
+        reviewerId,
+        reviewerEmail,
+        rejectedAt,
+      },
+      persistence: "local-dev-json",
+      fakeReviewer: false,
+      deletedCandidate: false,
+    });
+  }
 
   await dbQuery(
     `INSERT INTO candidate_rejections (

@@ -1,17 +1,38 @@
 import { WorkspaceBoundaryNotice } from "@/components/WorkspaceBoundaryNotice";
+import { ReviewQueueActions } from "@/components/ReviewQueueActions";
 import { listQueryRuns, getQueryRunAuditTrail } from "@/lib/query-audit";
+import type { EvidenceCandidate } from "@/lib/connectors/types";
 
 export const dynamic = "force-dynamic";
+
+function snapshotCandidates(trail: Awaited<ReturnType<typeof getQueryRunAuditTrail>>) {
+  if (!trail) return new Map<string, EvidenceCandidate>();
+  const candidates = new Map<string, EvidenceCandidate>();
+  for (const snapshot of trail.snapshots) {
+    const value = snapshot.snapshotJson.evidenceCandidates;
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      if (item && typeof item === "object" && "candidateId" in item && typeof item.candidateId === "string") {
+        candidates.set(item.candidateId, item as EvidenceCandidate);
+      }
+    }
+  }
+  return candidates;
+}
 
 export default async function ReviewQueuePage() {
   const runs = (await listQueryRuns()).slice(0, 20);
   const trails = await Promise.all(runs.map((run) => getQueryRunAuditTrail(run.id)));
   const candidates = trails.flatMap((trail) =>
     trail
-      ? trail.candidateEvents.map((candidate) => ({
-          ...candidate,
-          queryRun: trail.queryRun,
-        }))
+      ? trail.candidateEvents.map((candidate) => {
+          const fullCandidates = snapshotCandidates(trail);
+          return {
+            ...candidate,
+            queryRun: trail.queryRun,
+            candidate: fullCandidates.get(candidate.candidateId),
+          };
+        })
       : [],
   );
 
@@ -46,7 +67,7 @@ export default async function ReviewQueuePage() {
                   <th className="px-4 py-3">Candidate</th>
                   <th className="px-4 py-3">Query Run</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Review Action</th>
+                  <th className="px-4 py-3">Review action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
@@ -72,12 +93,7 @@ export default async function ReviewQueuePage() {
                       </span>
                     </td>
                     <td className="px-4 py-4 align-top">
-                      <button className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500" disabled>
-                        Review workflow pending
-                      </button>
-                      <p className="mt-2 max-w-xs text-xs leading-5 text-slate-500">
-                        Promotion/rejection requires the next workflow phase with reviewer notes and explicit audit events.
-                      </p>
+                      <ReviewQueueActions candidate={candidate.candidate} queryRunId={candidate.queryRun.id} />
                     </td>
                   </tr>
                 ))}
