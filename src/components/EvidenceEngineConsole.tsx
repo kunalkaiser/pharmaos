@@ -20,6 +20,15 @@ type RunResponse = {
   ok: boolean;
   engineConnected: boolean;
   reviewRequired?: boolean;
+  queryRunId?: string;
+  evidenceCandidates?: Array<{
+    candidateId: string;
+    sourceProvider: string;
+    sourceTitle: string;
+    sourceUrl: string;
+    confidence: string;
+    promotionStatus: string;
+  }>;
   result?: {
     chain: Chain;
     status: string;
@@ -252,6 +261,7 @@ export function EvidenceEngineConsole() {
               <h3 className="mt-2 text-xl font-semibold text-slate-950">
                 {runResponse.ok ? `${runResponse.result?.chain.name ?? selectedChain.name} completed` : "Workflow failed"}
               </h3>
+              {runResponse.queryRunId ? <p className="mt-1 font-mono text-xs text-slate-500">query_run: {runResponse.queryRunId}</p> : null}
             </div>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${runResponse.ok ? "bg-teal-50 text-teal-800" : "bg-red-50 text-red-800"}`}>
               {runResponse.ok ? "candidate-only" : "needs attention"}
@@ -273,6 +283,31 @@ export function EvidenceEngineConsole() {
                     using report export, scoring, payer, regulatory, or medical review workflows.
                   </p>
                 </div>
+                <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4">
+                  <p className="font-semibold text-teal-950">Review queue handoff</p>
+                  <p className="mt-2 text-sm leading-6 text-teal-900">
+                    {runResponse.evidenceCandidates?.length ?? 0} source-linked candidate(s) were normalized from this run.
+                    Narrative-only report text is excluded from candidate promotion.
+                  </p>
+                  <a href="/app/review-queue" className="mt-3 inline-flex rounded-full bg-teal-700 px-4 py-2 text-xs font-semibold text-white">
+                    Open review queue
+                  </a>
+                </div>
+                {runResponse.evidenceCandidates?.length ? (
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <p className="font-semibold text-slate-950">Candidate preview</p>
+                    <div className="mt-3 space-y-3">
+                      {runResponse.evidenceCandidates.slice(0, 5).map((candidate) => (
+                        <a key={candidate.candidateId} href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="block rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-teal-300 hover:bg-white">
+                          <p className="text-sm font-semibold text-slate-950">{candidate.sourceTitle}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {candidate.sourceProvider} · {candidate.confidence} · {candidate.promotionStatus}
+                          </p>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="rounded-2xl border border-slate-200 p-4">
                   <p className="font-semibold text-slate-950">Limitations</p>
                   <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
