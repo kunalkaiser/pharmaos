@@ -40,6 +40,30 @@ export type EvidenceEngineRunResponse = {
   limitations: string[];
 };
 
+export type EvidenceEnginePdfExtractionRequest = {
+  question: string;
+  title: string;
+  doi?: string;
+  pmid?: string;
+  source_url?: string;
+  filename?: string;
+  source_text?: string;
+  pdf_base64?: string;
+  population?: string;
+  intervention_or_exposure?: string;
+  comparator?: string;
+  outcomes?: string[];
+};
+
+export type EvidenceEnginePdfExtractionResponse = {
+  status: string;
+  record: Record<string, unknown>;
+  coding_form: Record<string, unknown>;
+  extracted_signals: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  limitations: string[];
+};
+
 export type EvidenceEngineHealth = {
   status?: string;
   runtime?: string;

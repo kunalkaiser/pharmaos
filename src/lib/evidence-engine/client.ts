@@ -3,6 +3,8 @@ import "server-only";
 import type {
   EvidenceEngineChain,
   EvidenceEngineHealth,
+  EvidenceEnginePdfExtractionRequest,
+  EvidenceEnginePdfExtractionResponse,
   EvidenceEngineRunRequest,
   EvidenceEngineRunResponse,
 } from "./types";
@@ -78,4 +80,29 @@ export async function runEvidenceEngineChain(input: EvidenceEngineRunRequest): P
     }),
   });
   return parseEngineResponse<EvidenceEngineRunResponse>(response);
+}
+
+export async function runEvidenceEnginePdfExtraction(
+  input: EvidenceEnginePdfExtractionRequest,
+): Promise<EvidenceEnginePdfExtractionResponse> {
+  const response = await fetch(`${engineBaseUrl()}/manual-pdf/extract`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      question: input.question,
+      title: input.title,
+      doi: input.doi ?? "",
+      pmid: input.pmid ?? "",
+      source_url: input.source_url ?? "",
+      filename: input.filename ?? "",
+      source_text: input.source_text ?? "",
+      pdf_base64: input.pdf_base64 ?? "",
+      population: input.population ?? "",
+      intervention_or_exposure: input.intervention_or_exposure ?? "",
+      comparator: input.comparator ?? "",
+      outcomes: input.outcomes ?? [],
+    }),
+  });
+  return parseEngineResponse<EvidenceEnginePdfExtractionResponse>(response);
 }
