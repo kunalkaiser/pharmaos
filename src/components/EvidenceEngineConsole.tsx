@@ -104,6 +104,18 @@ export function EvidenceEngineConsole() {
     if (requestedQuestion) setQuestion(requestedQuestion);
     if (requestedDrug) setDrug(requestedDrug);
     if (requestedIndication) setIndication(requestedIndication);
+    if (!accessToken && !document.cookie.includes("evidara_internal_access=")) {
+      const previewUrl = new URL("/api/preview-access", window.location.origin);
+      previewUrl.searchParams.set("token", "evidaraos-preview-access");
+      if (requestedChain) previewUrl.searchParams.set("chain", requestedChain);
+      if (requestedQuestion) previewUrl.searchParams.set("question", requestedQuestion);
+      if (requestedDrug) previewUrl.searchParams.set("drug", requestedDrug);
+      if (requestedIndication) previewUrl.searchParams.set("indication", requestedIndication);
+      window.location.replace(previewUrl.toString());
+      return () => {
+        cancelled = true;
+      };
+    }
     fetch("/api/internal/evidence-engine/chains", {
       cache: "no-store",
       headers: accessToken ? { "x-evidara-internal-token": accessToken } : undefined,
