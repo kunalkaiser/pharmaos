@@ -104,6 +104,28 @@ function countHydrationStatus(artifacts: Record<string, unknown> | undefined, st
   }).length;
 }
 
+function getQuantitativeSynthesis(artifacts: Record<string, unknown> | undefined) {
+  const value = artifacts?.quantitative_synthesis;
+  return isRecord(value) ? value : {};
+}
+
+function getQuantCharts(artifacts: Record<string, unknown> | undefined) {
+  const synthesis = getQuantitativeSynthesis(artifacts);
+  return isRecord(synthesis.charts) ? synthesis.charts : {};
+}
+
+function chartEntries(artifacts: Record<string, unknown> | undefined) {
+  const labels: Record<string, string> = {
+    prisma_svg: "PRISMA Flow",
+    forest_plot_svg: "Forest Plot",
+    safety_signal_svg: "Safety Signals",
+    readiness_svg: "Readiness",
+  };
+  return Object.entries(getQuantCharts(artifacts)).flatMap(([key, value]) =>
+    typeof value === "string" && value.includes("<svg") ? [{ key, label: labels[key] ?? key, svg: value }] : [],
+  );
+}
+
 function downloadBlob(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -153,7 +175,7 @@ export function EvidenceEngineConsole() {
   const [loading, setLoading] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Checking engine connection...");
   const [runResponse, setRunResponse] = useState<RunResponse | null>(null);
-  const [outputTab, setOutputTab] = useState<"summary" | "report" | "candidates" | "limitations">("summary");
+  const [outputTab, setOutputTab] = useState<"summary" | "figures" | "report" | "candidates" | "limitations">("summary");
   const [pdfTitle, setPdfTitle] = useState("Manual full-text source");
   const [pdfDoi, setPdfDoi] = useState("");
   const [pdfSourceUrl, setPdfSourceUrl] = useState("");
@@ -218,6 +240,7 @@ export function EvidenceEngineConsole() {
   const includedCount = getArtifactArray(runResponse?.result?.artifacts, "extraction").length;
   const fullTextRecoveredCount = countHydrationStatus(runResponse?.result?.artifacts, "full_text_recovered");
   const manualPdfCount = countHydrationStatus(runResponse?.result?.artifacts, "Requires_Manual_PDF_Ingestion");
+  const figures = chartEntries(runResponse?.result?.artifacts);
 
   async function runSelectedChain() {
     setLoading(true);
@@ -468,6 +491,7 @@ export function EvidenceEngineConsole() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     {[
                       ["summary", "Summary"],
+                      ["figures", "Figures"],
                       ["report", "Report"],
                       ["candidates", "Candidates"],
                       ["limitations", "Limitations"],
@@ -509,6 +533,23 @@ export function EvidenceEngineConsole() {
                         </p>
                       </div>
                     </div>
+                  ) : null}
+
+                  {outputTab === "figures" ? (
+                    figures.length ? (
+                      <div className="grid gap-4">
+                        {figures.map((figure) => (
+                          <div key={figure.key} className="overflow-auto rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="mb-3 text-sm font-semibold text-slate-950">{figure.label}</p>
+                            <div dangerouslySetInnerHTML={{ __html: figure.svg }} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+                        No quantitative figures were generated for this run. Full-text numerical extraction is required for forest and safety charts.
+                      </p>
+                    )
                   ) : null}
 
                   {outputTab === "report" ? (
