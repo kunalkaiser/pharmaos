@@ -59,6 +59,27 @@ function safeJson(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getArtifactArray(artifacts: Record<string, unknown> | undefined, key: string) {
+  const value = artifacts?.[key];
+  return Array.isArray(value) ? value : [];
+}
+
+function getReportMarkdown(artifacts: Record<string, unknown> | undefined) {
+  const value = artifacts?.report_markdown;
+  return typeof value === "string" ? value : "";
+}
+
+function countHydrationStatus(artifacts: Record<string, unknown> | undefined, status: string) {
+  return getArtifactArray(artifacts, "source_records").filter((record) => {
+    if (!isRecord(record) || !isRecord(record.enrichment)) return false;
+    return record.enrichment.full_text_hydration_status === status || record.enrichment.hydration_status === status;
+  }).length;
+}
+
 export function EvidenceEngineConsole() {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
@@ -73,7 +94,16 @@ export function EvidenceEngineConsole() {
 
   useEffect(() => {
     let cancelled = false;
-    const accessToken = new URLSearchParams(window.location.search).get("access_token") ?? "";
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get("access_token") ?? "";
+    const requestedChain = params.get("chain") ?? "";
+    const requestedQuestion = params.get("question") ?? "";
+    const requestedDrug = params.get("drug") ?? "";
+    const requestedIndication = params.get("indication") ?? "";
+    if (requestedChain) setSelectedChainId(requestedChain);
+    if (requestedQuestion) setQuestion(requestedQuestion);
+    if (requestedDrug) setDrug(requestedDrug);
+    if (requestedIndication) setIndication(requestedIndication);
     fetch("/api/internal/evidence-engine/chains", {
       cache: "no-store",
       headers: accessToken ? { "x-evidara-internal-token": accessToken } : undefined,
@@ -100,6 +130,12 @@ export function EvidenceEngineConsole() {
     () => chains.find((chain) => chain.id === selectedChainId) ?? chains[0] ?? fallbackChains[0],
     [chains, selectedChainId]
   );
+
+  const reportMarkdown = getReportMarkdown(runResponse?.result?.artifacts);
+  const recordCount = getArtifactArray(runResponse?.result?.artifacts, "source_records").length || getArtifactArray(runResponse?.result?.artifacts, "records").length;
+  const includedCount = getArtifactArray(runResponse?.result?.artifacts, "extraction").length;
+  const fullTextRecoveredCount = countHydrationStatus(runResponse?.result?.artifacts, "full_text_recovered");
+  const manualPdfCount = countHydrationStatus(runResponse?.result?.artifacts, "Requires_Manual_PDF_Ingestion");
 
   async function runSelectedChain() {
     setLoading(true);
@@ -272,9 +308,53 @@ export function EvidenceEngineConsole() {
 
           {runResponse.result ? (
             <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.8fr]">
-              <pre className="max-h-[620px] overflow-auto rounded-2xl bg-slate-950 p-5 text-xs leading-5 text-slate-100">
-                {safeJson(runResponse.result.artifacts)}
-              </pre>
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {[
+                    ["Records", recordCount],
+                    ["Extracted", includedCount],
+                    ["Full text", fullTextRecoveredCount],
+                    ["Manual PDF", manualPdfCount],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {reportMarkdown ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Report artifact</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950">Draft evidence report from the Python engine</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const blob = new Blob([reportMarkdown], { type: "text/markdown" });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.href = url;
+                          link.download = `${selectedChain.id}-evidence-report.md`;
+                          link.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                      >
+                        Download markdown
+                      </button>
+                    </div>
+                    <pre className="max-h-[620px] overflow-auto whitespace-pre-wrap p-5 text-sm leading-6 text-slate-800">
+                      {reportMarkdown}
+                    </pre>
+                  </div>
+                ) : (
+                  <pre className="max-h-[620px] overflow-auto rounded-2xl bg-slate-950 p-5 text-xs leading-5 text-slate-100">
+                    {safeJson(runResponse.result.artifacts)}
+                  </pre>
+                )}
+              </div>
               <div className="space-y-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <p className="font-semibold text-amber-950">Governance boundary</p>

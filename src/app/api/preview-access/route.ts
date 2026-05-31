@@ -22,6 +22,10 @@ export function GET(request: Request) {
   const forwardedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
   const redirectUrl = new URL("/app", `${forwardedProto}://${forwardedHost}`);
   redirectUrl.searchParams.set("access_token", configuredToken);
+  for (const key of ["chain", "question", "drug", "indication"]) {
+    const value = url.searchParams.get(key);
+    if (value) redirectUrl.searchParams.set(key, value.slice(0, 1200));
+  }
   const response = NextResponse.redirect(redirectUrl);
   response.cookies.set(internalAccessCookie, configuredToken, {
     httpOnly: true,

@@ -7,42 +7,52 @@ const workspacePreviewHref = "/api/preview-access?token=evidaraos-preview-access
 
 const liveAnalysisChains = [
   {
+    id: "full_slr",
     name: "Full SLR",
     description: "PICO protocol, source search, deduplication, PRISMA, GRADE and RoB 2 scaffolds.",
   },
   {
+    id: "heor_foundation",
     name: "HEOR Foundation",
     description: "Source-linked model inputs, assumption register, evidence readiness and gaps.",
   },
   {
+    id: "payer_brief",
     name: "Payer Brief",
     description: "Value questions, claim traceability, payer evidence gaps and source links.",
   },
   {
+    id: "safety_review",
     name: "Safety Review",
     description: "FAERS signal table, safety extraction, discontinuation signals and limitations.",
   },
   {
+    id: "regulatory",
     name: "Regulatory",
     description: "Label retrieval, benefit-risk table, uncertainty register and language guardrails.",
   },
   {
+    id: "repurposing",
     name: "Repurposing",
     description: "Candidate hypotheses, evidence path notes and false-positive review checks.",
   },
   {
+    id: "genomics",
     name: "Genomics",
     description: "Gene evidence table, target-disease overlap and genomics readiness checklist.",
   },
   {
+    id: "trial_intelligence",
     name: "Trial Intelligence",
     description: "ClinicalTrials.gov retrieval, trial status counts and eligibility pattern table.",
   },
   {
+    id: "full_discovery",
     name: "Full Discovery",
     description: "Cross-module run across SLR, safety, HEOR, regulatory, repurposing and genomics.",
   },
   {
+    id: "rapid_scan",
     name: "Rapid Scan",
     description: "Fast protocol, small search, deduplication and top evidence table.",
   },
@@ -157,7 +167,7 @@ export default function Home() {
 
             <div className="grid gap-4 md:grid-cols-2">
               {liveAnalysisChains.map((chain) => (
-                <Link key={chain.name} href={workspacePreviewHref} className="group rounded-3xl border border-slate-200 bg-[#f8fafc] p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-white hover:shadow-md">
+                <Link key={chain.name} href={`${workspacePreviewHref}&chain=${chain.id}`} className="group rounded-3xl border border-slate-200 bg-[#f8fafc] p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-white hover:shadow-md">
                   <div className="flex items-start justify-between gap-3">
                     <h3 className="text-base font-semibold text-slate-950">{chain.name}</h3>
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800">Available</span>
