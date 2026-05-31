@@ -80,6 +80,24 @@ function countHydrationStatus(artifacts: Record<string, unknown> | undefined, st
   }).length;
 }
 
+function downloadBlob(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function markdownToDocumentHtml(markdown: string, title: string) {
+  const escaped = markdown
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;line-height:1.55;color:#111827;max-width:900px;margin:40px auto;padding:0 24px}pre{white-space:pre-wrap}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}</style></head><body><pre>${escaped}</pre></body></html>`;
+}
+
 export function EvidenceEngineConsole() {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
@@ -91,6 +109,7 @@ export function EvidenceEngineConsole() {
   const [loading, setLoading] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Checking engine connection...");
   const [runResponse, setRunResponse] = useState<RunResponse | null>(null);
+  const [outputTab, setOutputTab] = useState<"summary" | "report" | "candidates" | "limitations">("summary");
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +171,7 @@ export function EvidenceEngineConsole() {
   async function runSelectedChain() {
     setLoading(true);
     setRunResponse(null);
+    setOutputTab("summary");
     try {
       const response = await fetch("/api/internal/evidence-engine/run", {
         method: "POST",
@@ -319,54 +339,126 @@ export function EvidenceEngineConsole() {
           {runResponse.error ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-800">{runResponse.error}</p> : null}
 
           {runResponse.result ? (
-            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.8fr]">
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-4">
-                  {[
-                    ["Records", recordCount],
-                    ["Extracted", includedCount],
-                    ["Full text", fullTextRecoveredCount],
-                    ["Manual PDF", manualPdfCount],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+            <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.7fr]">
+              <div className="rounded-2xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Analysis package</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-950">Source-linked draft output, candidate-only</p>
                     </div>
-                  ))}
-                </div>
-                {reportMarkdown ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Report artifact</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-950">Draft evidence report from the Python engine</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const blob = new Blob([reportMarkdown], { type: "text/markdown" });
-                          const url = URL.createObjectURL(blob);
-                          const link = document.createElement("a");
-                          link.href = url;
-                          link.download = `${selectedChain.id}-evidence-report.md`;
-                          link.click();
-                          URL.revokeObjectURL(url);
-                        }}
-                        className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
-                      >
-                        Download markdown
-                      </button>
+                    <div className="flex flex-wrap gap-2">
+                      {reportMarkdown ? (
+                        <>
+                          <button type="button" onClick={() => downloadBlob(`${selectedChain.id}-evidence-report.md`, reportMarkdown, "text/markdown")} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50">
+                            Markdown
+                          </button>
+                          <button type="button" onClick={() => downloadBlob(`${selectedChain.id}-evidence-report.doc`, markdownToDocumentHtml(reportMarkdown, `${selectedChain.name} evidence report`), "application/msword")} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50">
+                            Word
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const printWindow = window.open("", "_blank", "noopener,noreferrer");
+                              if (!printWindow) return;
+                              printWindow.document.write(markdownToDocumentHtml(reportMarkdown, `${selectedChain.name} evidence report`));
+                              printWindow.document.close();
+                              printWindow.focus();
+                              printWindow.print();
+                            }}
+                            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                          >
+                            PDF / Print
+                          </button>
+                        </>
+                      ) : null}
                     </div>
-                    <pre className="max-h-[620px] overflow-auto whitespace-pre-wrap p-5 text-sm leading-6 text-slate-800">
-                      {reportMarkdown}
-                    </pre>
                   </div>
-                ) : (
-                  <pre className="max-h-[620px] overflow-auto rounded-2xl bg-slate-950 p-5 text-xs leading-5 text-slate-100">
-                    {safeJson(runResponse.result.artifacts)}
-                  </pre>
-                )}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {[
+                      ["summary", "Summary"],
+                      ["report", "Report"],
+                      ["candidates", "Candidates"],
+                      ["limitations", "Limitations"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setOutputTab(id as typeof outputTab)}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          outputTab === id ? "bg-slate-950 text-white" : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-white"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  {outputTab === "summary" ? (
+                    <div className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-4">
+                        {[
+                          ["Records", recordCount],
+                          ["Extracted", includedCount],
+                          ["Full text", fullTextRecoveredCount],
+                          ["Manual PDF", manualPdfCount],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                            <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                        <p className="font-semibold text-slate-950">What happened</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          The Python engine completed the selected workflow and normalized source-linked records into a candidate evidence package. Open the Report tab for the draft document, or Candidates for review handoff.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {outputTab === "report" ? (
+                    reportMarkdown ? (
+                      <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-sm leading-6 text-slate-800">
+                        {reportMarkdown}
+                      </pre>
+                    ) : (
+                      <pre className="max-h-[70vh] overflow-auto rounded-2xl bg-slate-950 p-5 text-xs leading-5 text-slate-100">
+                        {safeJson(runResponse.result.artifacts)}
+                      </pre>
+                    )
+                  ) : null}
+
+                  {outputTab === "candidates" ? (
+                    <div className="space-y-3">
+                      {runResponse.evidenceCandidates?.length ? (
+                        runResponse.evidenceCandidates.map((candidate) => (
+                          <a key={candidate.candidateId} href={candidate.sourceUrl} target="_blank" rel="noreferrer" className="block rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-teal-300 hover:bg-white">
+                            <p className="text-sm font-semibold text-slate-950">{candidate.sourceTitle}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {candidate.sourceProvider} · {candidate.confidence} · {candidate.promotionStatus}
+                            </p>
+                          </a>
+                        ))
+                      ) : (
+                        <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No source-linked candidates were normalized from this run.</p>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {outputTab === "limitations" ? (
+                    <ul className="space-y-2 text-sm leading-6 text-slate-600">
+                      {runResponse.result.limitations.map((item) => (
+                        <li key={item} className="rounded-xl border border-slate-200 bg-slate-50 p-3">{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               </div>
+
               <div className="space-y-4">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <p className="font-semibold text-amber-950">Governance boundary</p>
@@ -403,10 +495,15 @@ export function EvidenceEngineConsole() {
                 <div className="rounded-2xl border border-slate-200 p-4">
                   <p className="font-semibold text-slate-950">Limitations</p>
                   <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-                    {runResponse.result.limitations.map((item) => (
+                    {runResponse.result.limitations.slice(0, 4).map((item) => (
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
+                  {runResponse.result.limitations.length > 4 ? (
+                    <button type="button" onClick={() => setOutputTab("limitations")} className="mt-3 text-xs font-semibold text-teal-800">
+                      View all {runResponse.result.limitations.length} limitations
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
