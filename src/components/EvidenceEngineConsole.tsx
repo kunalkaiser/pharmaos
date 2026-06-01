@@ -118,16 +118,95 @@ function getArtifactArray(artifacts: Record<string, unknown> | undefined, key: s
   return Array.isArray(value) ? value : [];
 }
 
+function getSourceInventory(artifacts: Record<string, unknown> | undefined) {
+  const records = getArtifactArray(artifacts, "records");
+  const sourceRecords = getArtifactArray(artifacts, "source_records");
+  const primary = records.some((record) => isRecord(record) && isRecord(record.enrichment)) ? records : sourceRecords;
+  return primary.filter(isRecord);
+}
+
 function getReportMarkdown(artifacts: Record<string, unknown> | undefined) {
   const value = artifacts?.report_markdown;
   return typeof value === "string" ? value : "";
 }
 
 function countHydrationStatus(artifacts: Record<string, unknown> | undefined, status: string) {
-  return getArtifactArray(artifacts, "source_records").filter((record) => {
-    if (!isRecord(record) || !isRecord(record.enrichment)) return false;
-    return record.enrichment.full_text_hydration_status === status || record.enrichment.hydration_status === status;
+  return getSourceInventory(artifacts).filter((record) => {
+    const enrichment = isRecord(record.enrichment) ? record.enrichment : record;
+    return enrichment.full_text_hydration_status === status || enrichment.hydration_status === status;
   }).length;
+}
+
+function textValue(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return "";
+}
+
+function nestedText(record: Record<string, unknown>, path: string[]) {
+  let current: unknown = record;
+  for (const key of path) {
+    if (!isRecord(current)) return "";
+    current = current[key];
+  }
+  return typeof current === "string" ? current.trim() : "";
+}
+
+function sourceTitle(record: Record<string, unknown>) {
+  return textValue(record, ["title", "sourceTitle", "source_title"]) || "Untitled source";
+}
+
+function sourceUrl(record: Record<string, unknown>) {
+  const direct = textValue(record, ["url", "sourceUrl", "source_url", "full_text_url"]);
+  if (direct) return direct;
+  const doi = textValue(record, ["doi", "DOI"]).replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
+  if (doi) return `https://doi.org/${encodeURIComponent(doi)}`;
+  const pmid = textValue(record, ["pmid", "PMID"]);
+  if (pmid) return `https://pubmed.ncbi.nlm.nih.gov/${encodeURIComponent(pmid)}/`;
+  return "";
+}
+
+function hydrationDetails(record: Record<string, unknown>) {
+  const enrichment = isRecord(record.enrichment) ? record.enrichment : record;
+  const fullTextStatus = textValue(enrichment, ["full_text_hydration_status"]);
+  const hydrationStatus = textValue(enrichment, ["hydration_status"]);
+  const fullTextUrl = textValue(enrichment, ["full_text_url"]);
+  const fullTextSource = textValue(enrichment, ["full_text_source"]);
+  const unpaywallPdfUrl = nestedText(enrichment, ["full_text_extracted_signals", "unpaywall", "pdf_url"]);
+  const manualReason = nestedText(enrichment, ["manual_queue", "reason"]);
+  const status = fullTextStatus || hydrationStatus || "metadata_only";
+  const labelMap: Record<string, string> = {
+    full_text_recovered: "Open-access full text recovered",
+    Requires_Manual_PDF_Ingestion: "Manual PDF required",
+    abstract_recovered_from_pubmed: "PubMed abstract recovered",
+    no_pubmed_abstract_found: "No PubMed abstract found",
+    abstract_unavailable: "Abstract unavailable",
+    failed: "Hydration failed",
+    rate_limited_retryable: "Rate limited, retry available",
+    metadata_only: "Metadata only",
+  };
+  const tone =
+    status === "full_text_recovered"
+      ? "border-teal-200 bg-teal-50 text-teal-900"
+      : status === "Requires_Manual_PDF_Ingestion" || status === "failed" || status === "abstract_unavailable"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : "border-slate-200 bg-slate-50 text-slate-700";
+  return {
+    status,
+    label: labelMap[status] ?? status.replace(/_/g, " "),
+    tone,
+    fullTextUrl,
+    fullTextSource,
+    unpaywallPdfUrl,
+    manualReason,
+  };
+}
+
+function sourceProvider(record: Record<string, unknown>) {
+  return textValue(record, ["source", "sourceProvider", "provider"]) || "source";
 }
 
 function getQuantitativeSynthesis(artifacts: Record<string, unknown> | undefined) {
@@ -210,7 +289,7 @@ export function EvidenceEngineConsole() {
   const [loading, setLoading] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Checking engine connection...");
   const [runResponse, setRunResponse] = useState<RunResponse | null>(null);
-  const [outputTab, setOutputTab] = useState<"summary" | "figures" | "report" | "candidates" | "limitations">("summary");
+  const [outputTab, setOutputTab] = useState<"summary" | "sources" | "figures" | "report" | "candidates" | "limitations">("summary");
   const [pdfTitle, setPdfTitle] = useState("Manual full-text source");
   const [pdfDoi, setPdfDoi] = useState("");
   const [pdfSourceUrl, setPdfSourceUrl] = useState("");
@@ -281,7 +360,8 @@ export function EvidenceEngineConsole() {
   );
 
   const reportMarkdown = getReportMarkdown(runResponse?.result?.artifacts);
-  const recordCount = getArtifactArray(runResponse?.result?.artifacts, "source_records").length || getArtifactArray(runResponse?.result?.artifacts, "records").length;
+  const sourceInventory = getSourceInventory(runResponse?.result?.artifacts);
+  const recordCount = sourceInventory.length || getArtifactArray(runResponse?.result?.artifacts, "source_records").length || getArtifactArray(runResponse?.result?.artifacts, "records").length;
   const includedCount = getArtifactArray(runResponse?.result?.artifacts, "extraction").length;
   const fullTextRecoveredCount = countHydrationStatus(runResponse?.result?.artifacts, "full_text_recovered");
   const manualPdfCount = countHydrationStatus(runResponse?.result?.artifacts, "Requires_Manual_PDF_Ingestion");
@@ -604,6 +684,7 @@ export function EvidenceEngineConsole() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     {[
                       ["summary", "Summary"],
+                      ["sources", "Sources"],
                       ["figures", "Figures"],
                       ["report", "Report"],
                       ["candidates", "Candidates"],
@@ -645,6 +726,84 @@ export function EvidenceEngineConsole() {
                           The Python engine completed the selected workflow and normalized source-linked records into a candidate evidence package. Open the Report tab for the draft document, or Candidates for review handoff.
                         </p>
                       </div>
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-950">Full-text source availability</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">
+                              Hydration status from PubMed, PMC, Europe PMC, and Unpaywall for each retrieved source.
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => setOutputTab("sources")} className="w-fit rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50">
+                            View all sources
+                          </button>
+                        </div>
+                        <div className="mt-4 space-y-3">
+                          {sourceInventory.slice(0, 6).map((record, index) => {
+                            const hydration = hydrationDetails(record);
+                            const url = sourceUrl(record);
+                            return (
+                              <div key={`${sourceTitle(record)}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-950">{sourceTitle(record)}</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {sourceProvider(record)} · {textValue(record, ["doi", "pmid", "id"]) || "identifier pending"}
+                                    </p>
+                                  </div>
+                                  <span className={`w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold ${hydration.tone}`}>
+                                    {hydration.label}
+                                  </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {url ? <a href={url} target="_blank" rel="noreferrer" className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">Source page</a> : null}
+                                  {hydration.fullTextUrl ? <a href={hydration.fullTextUrl} target="_blank" rel="noreferrer" className="rounded-full bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">Full text</a> : null}
+                                  {hydration.unpaywallPdfUrl ? <a href={hydration.unpaywallPdfUrl} target="_blank" rel="noreferrer" className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white">Unpaywall PDF</a> : null}
+                                </div>
+                                {hydration.manualReason ? <p className="mt-2 text-xs leading-5 text-amber-800">{hydration.manualReason}</p> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {outputTab === "sources" ? (
+                    <div className="space-y-3">
+                      {sourceInventory.length ? (
+                        sourceInventory.map((record, index) => {
+                          const hydration = hydrationDetails(record);
+                          const url = sourceUrl(record);
+                          return (
+                            <div key={`${sourceTitle(record)}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-950">{sourceTitle(record)}</p>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {sourceProvider(record)} · {textValue(record, ["year", "publication_date"]) || "date pending"} · {textValue(record, ["doi", "pmid", "id"]) || "identifier pending"}
+                                  </p>
+                                </div>
+                                <span className={`w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold ${hydration.tone}`}>
+                                  {hydration.label}
+                                </span>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {url ? <a href={url} target="_blank" rel="noreferrer" className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">Source page</a> : null}
+                                {hydration.fullTextUrl ? <a href={hydration.fullTextUrl} target="_blank" rel="noreferrer" className="rounded-full bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">Full text</a> : null}
+                                {hydration.unpaywallPdfUrl ? <a href={hydration.unpaywallPdfUrl} target="_blank" rel="noreferrer" className="rounded-full bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white">Unpaywall PDF</a> : null}
+                              </div>
+                              <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                                <p>Hydration: {hydration.status}</p>
+                                <p>Full-text source: {hydration.fullTextSource || "not available"}</p>
+                              </div>
+                              {hydration.manualReason ? <p className="mt-2 text-xs leading-5 text-amber-800">{hydration.manualReason}</p> : null}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No source inventory was returned by this run.</p>
+                      )}
                     </div>
                   ) : null}
 
