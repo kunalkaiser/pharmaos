@@ -22,6 +22,14 @@ export async function POST(request: Request) {
   const title = cleanString(body.title, 240) || "EvidaraOS evidence report";
   const markdown = cleanString(body.markdown, 1_500_000);
   const format = body.format;
+  const charts =
+    body.charts && typeof body.charts === "object" && !Array.isArray(body.charts)
+      ? Object.fromEntries(
+          Object.entries(body.charts as Record<string, unknown>)
+            .filter(([, value]) => typeof value === "string" && value.includes("<svg"))
+            .map(([key, value]) => [key.slice(0, 80), String(value).slice(0, 500_000)]),
+        )
+      : {};
 
   if (!markdown) {
     return NextResponse.json({ ok: false, error: "Report markdown is required before export." }, { status: 400 });
@@ -31,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const artifact = await runEvidenceEngineExport({ title, markdown, format });
+    const artifact = await runEvidenceEngineExport({ title, markdown, format, charts });
     const bytes = Buffer.from(artifact.base64_content, "base64");
     return new Response(bytes, {
       headers: {

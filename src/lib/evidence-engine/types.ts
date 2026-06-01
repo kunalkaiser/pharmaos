@@ -91,6 +91,7 @@ export type EvidenceEngineExportRequest = {
   title: string;
   markdown: string;
   format: "markdown" | "pdf" | "pptx";
+  charts?: Record<string, string>;
 };
 
 export type EvidenceEngineExportResponse = {

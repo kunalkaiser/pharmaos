@@ -497,6 +497,7 @@ export function EvidenceEngineConsole() {
           title: `${selectedChain.name} evidence report`,
           markdown: reportMarkdown,
           format: "pdf",
+          charts: getQuantCharts(runResponse?.result?.artifacts),
         }),
       });
       if (!response.ok) {
