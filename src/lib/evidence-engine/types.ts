@@ -87,6 +87,19 @@ export type EvidenceEngineDocumentChatResponse = {
   limitations: string[];
 };
 
+export type EvidenceEngineExportRequest = {
+  title: string;
+  markdown: string;
+  format: "markdown" | "pdf" | "pptx";
+};
+
+export type EvidenceEngineExportResponse = {
+  filename: string;
+  media_type: string;
+  base64_content: string;
+  warnings: string[];
+};
+
 export type EvidenceEngineHealth = {
   status?: string;
   runtime?: string;

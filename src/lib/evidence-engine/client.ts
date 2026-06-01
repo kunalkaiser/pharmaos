@@ -5,6 +5,8 @@ import type {
   EvidenceEngineHealth,
   EvidenceEngineDocumentChatRequest,
   EvidenceEngineDocumentChatResponse,
+  EvidenceEngineExportRequest,
+  EvidenceEngineExportResponse,
   EvidenceEnginePdfExtractionRequest,
   EvidenceEnginePdfExtractionResponse,
   EvidenceEngineRunRequest,
@@ -129,4 +131,14 @@ export async function runEvidenceEngineDocumentChat(
     }),
   });
   return parseEngineResponse<EvidenceEngineDocumentChatResponse>(response);
+}
+
+export async function runEvidenceEngineExport(input: EvidenceEngineExportRequest): Promise<EvidenceEngineExportResponse> {
+  const response = await fetch(`${engineBaseUrl()}/export`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  return parseEngineResponse<EvidenceEngineExportResponse>(response);
 }

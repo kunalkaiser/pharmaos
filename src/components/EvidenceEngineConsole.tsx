@@ -154,12 +154,21 @@ function chartEntries(artifacts: Record<string, unknown> | undefined) {
 
 function downloadBlob(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
+  downloadBinaryBlob(filename, blob);
+}
+
+function downloadBinaryBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function filenameFromContentDisposition(value: string | null, fallback: string) {
+  const match = value?.match(/filename="?([^"]+)"?/i);
+  return match?.[1] || fallback;
 }
 
 function markdownToDocumentHtml(markdown: string, title: string) {
@@ -217,6 +226,8 @@ export function EvidenceEngineConsole() {
   const [chatFile, setChatFile] = useState<File | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatResponse, setChatResponse] = useState<DocumentChatResponse | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<"pdf" | null>(null);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -389,6 +400,41 @@ export function EvidenceEngineConsole() {
     }
   }
 
+  async function exportReportPdf() {
+    if (!reportMarkdown) return;
+    setExportingFormat("pdf");
+    setExportError("");
+    try {
+      const response = await fetch("/api/internal/evidence-engine/export", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(new URLSearchParams(window.location.search).get("access_token")
+            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
+            : {}),
+        },
+        body: JSON.stringify({
+          title: `${selectedChain.name} evidence report`,
+          markdown: reportMarkdown,
+          format: "pdf",
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error ?? `Export failed with HTTP ${response.status}.`);
+      }
+      const blob = await response.blob();
+      downloadBinaryBlob(
+        filenameFromContentDisposition(response.headers.get("content-disposition"), `${selectedChain.id}-evidence-report.pdf`),
+        blob,
+      );
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "PDF export failed.");
+    } finally {
+      setExportingFormat(null);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -544,22 +590,17 @@ export function EvidenceEngineConsole() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              const printWindow = window.open("", "_blank", "noopener,noreferrer");
-                              if (!printWindow) return;
-                              printWindow.document.write(markdownToDocumentHtml(reportMarkdown, `${selectedChain.name} evidence report`));
-                              printWindow.document.close();
-                              printWindow.focus();
-                              printWindow.print();
-                            }}
-                            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50"
+                            onClick={exportReportPdf}
+                            disabled={exportingFormat === "pdf"}
+                            className="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                           >
-                            PDF / Print
+                            {exportingFormat === "pdf" ? "Exporting..." : "PDF"}
                           </button>
                         </>
                       ) : null}
                     </div>
                   </div>
+                  {exportError ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{exportError}</p> : null}
                   <div className="mt-4 flex flex-wrap gap-2">
                     {[
                       ["summary", "Summary"],
