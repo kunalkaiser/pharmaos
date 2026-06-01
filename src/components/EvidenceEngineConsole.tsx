@@ -63,6 +63,32 @@ type PdfExtractionResponse = {
   error?: string;
 };
 
+type DocumentChatResponse = {
+  ok: boolean;
+  engineConnected: boolean;
+  reviewRequired?: boolean;
+  queryRunId?: string;
+  chat?: {
+    status: string;
+    answer: string;
+    snippets: Array<Record<string, unknown>>;
+    extracted_fields: Array<Record<string, string>>;
+    extracted_signals: Record<string, unknown>;
+    record: Record<string, unknown>;
+    provenance: Record<string, unknown>;
+    limitations: string[];
+  };
+  evidenceCandidates?: Array<{
+    candidateId: string;
+    sourceProvider: string;
+    sourceTitle: string;
+    sourceUrl: string;
+    confidence: string;
+    promotionStatus: string;
+  }>;
+  error?: string;
+};
+
 const fallbackChains: Chain[] = [
   { id: "full_slr", name: "Full SLR", status: "available", outputs: ["PICO protocol", "search log", "PRISMA scaffold"] },
   { id: "payer_brief", name: "Payer Brief", status: "available", outputs: ["value story support", "claim traceability", "evidence gaps"] },
@@ -183,6 +209,14 @@ export function EvidenceEngineConsole() {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfResponse, setPdfResponse] = useState<PdfExtractionResponse | null>(null);
+  const [chatTitle, setChatTitle] = useState("Uploaded evidence document");
+  const [chatQuestion, setChatQuestion] = useState("Extract efficacy, safety, discontinuation, HR, CI, p-values, and source snippets.");
+  const [chatDoi, setChatDoi] = useState("");
+  const [chatSourceUrl, setChatSourceUrl] = useState("");
+  const [chatSourceText, setChatSourceText] = useState("");
+  const [chatFile, setChatFile] = useState<File | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatResponse, setChatResponse] = useState<DocumentChatResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,6 +348,44 @@ export function EvidenceEngineConsole() {
       });
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  async function runDocumentChat() {
+    setChatLoading(true);
+    setChatResponse(null);
+    try {
+      const fileBase64 = chatFile ? await fileToBase64(chatFile) : "";
+      const isDocx = Boolean(chatFile?.name.toLowerCase().endsWith(".docx"));
+      const response = await fetch("/api/internal/evidence-engine/document-chat", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(new URLSearchParams(window.location.search).get("access_token")
+            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
+            : {}),
+        },
+        body: JSON.stringify({
+          question: chatQuestion,
+          title: chatTitle,
+          doi: chatDoi,
+          source_url: chatSourceUrl,
+          filename: chatFile?.name ?? "",
+          source_text: chatSourceText,
+          pdf_base64: chatFile && !isDocx ? fileBase64 : "",
+          docx_base64: chatFile && isDocx ? fileBase64 : "",
+        }),
+      });
+      const payload = (await response.json()) as DocumentChatResponse;
+      setChatResponse(payload);
+    } catch (error) {
+      setChatResponse({
+        ok: false,
+        engineConnected: false,
+        error: error instanceof Error ? error.message : "Document chat failed.",
+      });
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -642,6 +714,152 @@ export function EvidenceEngineConsole() {
           ) : null}
         </div>
       ) : null}
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Document Evidence Chat</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">Ask an uploaded paper or document for source-grounded evidence</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Upload a PDF/DOCX or paste text, then ask for endpoints, safety events, discontinuations, HRs, confidence intervals,
+              p-values, population, comparator, or evidence snippets. Answers stay candidate-only and source-linked.
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Free deterministic mode</span>
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="space-y-4">
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-800">Document title</span>
+              <input
+                value={chatTitle}
+                onChange={(event) => setChatTitle(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-800">Ask the document</span>
+              <textarea
+                value={chatQuestion}
+                onChange={(event) => setChatQuestion(event.target.value)}
+                rows={3}
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+              />
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-800">DOI</span>
+                <input
+                  value={chatDoi}
+                  onChange={(event) => setChatDoi(event.target.value)}
+                  placeholder="10.xxxx/source"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-800">Source URL</span>
+                <input
+                  value={chatSourceUrl}
+                  onChange={(event) => setChatSourceUrl(event.target.value)}
+                  placeholder="https://doi.org/..."
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+              </label>
+            </div>
+            <label className="block rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+              <span className="text-sm font-semibold text-slate-800">Upload PDF or DOCX</span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
+                onChange={(event) => setChatFile(event.target.files?.[0] ?? null)}
+                className="mt-3 block w-full text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
+              />
+              {chatFile ? <p className="mt-2 text-xs text-slate-500">{chatFile.name}</p> : null}
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-800">Or paste document text</span>
+              <textarea
+                value={chatSourceText}
+                onChange={(event) => setChatSourceText(event.target.value)}
+                rows={7}
+                placeholder="Paste full text, table text, results, safety, or methods sections..."
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={runDocumentChat}
+              disabled={chatLoading}
+              className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {chatLoading ? "Asking document..." : "Ask Document"}
+            </button>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Chat output</p>
+                <h4 className="mt-2 font-semibold text-slate-950">
+                  {chatResponse ? (chatResponse.ok ? "Source-grounded answer ready" : "Document chat needs attention") : "Waiting for a question"}
+                </h4>
+              </div>
+              {chatResponse?.queryRunId ? <span className="font-mono text-[11px] text-slate-500">{chatResponse.queryRunId.slice(0, 8)}</span> : null}
+            </div>
+
+            {chatResponse?.error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{chatResponse.error}</p> : null}
+
+            {chatResponse?.chat ? (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Status", chatResponse.chat.status],
+                    ["Snippets", chatResponse.chat.snippets.length],
+                    ["Fields", chatResponse.chat.extracted_fields.length],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+                      <p className="mt-2 break-words text-sm font-semibold text-slate-950">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="font-semibold text-slate-950">Answer</p>
+                  <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-800">{chatResponse.chat.answer}</pre>
+                </div>
+                {chatResponse.chat.extracted_fields.length ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <p className="font-semibold text-slate-950">Extracted fields</p>
+                    <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-slate-200">
+                      {chatResponse.chat.extracted_fields.slice(0, 12).map((field, index) => (
+                        <div key={`${field.field}-${index}`} className="border-b border-slate-100 p-3 last:border-b-0">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{field.field}</p>
+                          <p className="mt-1 text-sm text-slate-900">{field.value}</p>
+                          {field.source_context ? <p className="mt-1 text-xs text-slate-500">{field.source_context}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+                  <p className="font-semibold text-teal-950">Review queue handoff</p>
+                  <p className="mt-2 text-sm leading-6 text-teal-900">
+                    {chatResponse.evidenceCandidates?.length ?? 0} document-chat candidate(s) are ready for human review and promotion.
+                  </p>
+                  <a href="/app/review-queue" className="mt-3 inline-flex rounded-full bg-teal-700 px-4 py-2 text-xs font-semibold text-white">
+                    Open review queue
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 rounded-xl bg-white p-4 text-sm leading-6 text-slate-600">
+                This is the free mode: deterministic retrieval, regex extraction, snippets, and reviewable fields without any paid LLM key.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

@@ -64,6 +64,29 @@ export type EvidenceEnginePdfExtractionResponse = {
   limitations: string[];
 };
 
+export type EvidenceEngineDocumentChatRequest = {
+  question: string;
+  title?: string;
+  doi?: string;
+  pmid?: string;
+  source_url?: string;
+  filename?: string;
+  source_text?: string;
+  pdf_base64?: string;
+  docx_base64?: string;
+};
+
+export type EvidenceEngineDocumentChatResponse = {
+  status: string;
+  answer: string;
+  snippets: Array<Record<string, unknown>>;
+  extracted_fields: Array<Record<string, string>>;
+  extracted_signals: Record<string, unknown>;
+  record: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  limitations: string[];
+};
+
 export type EvidenceEngineHealth = {
   status?: string;
   runtime?: string;

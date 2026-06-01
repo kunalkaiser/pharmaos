@@ -3,6 +3,8 @@ import "server-only";
 import type {
   EvidenceEngineChain,
   EvidenceEngineHealth,
+  EvidenceEngineDocumentChatRequest,
+  EvidenceEngineDocumentChatResponse,
   EvidenceEnginePdfExtractionRequest,
   EvidenceEnginePdfExtractionResponse,
   EvidenceEngineRunRequest,
@@ -105,4 +107,26 @@ export async function runEvidenceEnginePdfExtraction(
     }),
   });
   return parseEngineResponse<EvidenceEnginePdfExtractionResponse>(response);
+}
+
+export async function runEvidenceEngineDocumentChat(
+  input: EvidenceEngineDocumentChatRequest,
+): Promise<EvidenceEngineDocumentChatResponse> {
+  const response = await fetch(`${engineBaseUrl()}/documents/chat`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      question: input.question,
+      title: input.title ?? "",
+      doi: input.doi ?? "",
+      pmid: input.pmid ?? "",
+      source_url: input.source_url ?? "",
+      filename: input.filename ?? "",
+      source_text: input.source_text ?? "",
+      pdf_base64: input.pdf_base64 ?? "",
+      docx_base64: input.docx_base64 ?? "",
+    }),
+  });
+  return parseEngineResponse<EvidenceEngineDocumentChatResponse>(response);
 }
