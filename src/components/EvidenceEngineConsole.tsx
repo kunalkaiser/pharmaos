@@ -283,11 +283,58 @@ function filenameFromContentDisposition(value: string | null, fallback: string) 
 }
 
 function markdownToDocumentHtml(markdown: string, title: string) {
-  const escaped = markdown
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;line-height:1.55;color:#111827;max-width:900px;margin:40px auto;padding:0 24px}pre{white-space:pre-wrap}table{border-collapse:collapse;width:100%}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}</style></head><body><pre>${escaped}</pre></body></html>`;
+  const escapeHtml = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (value: string) =>
+    escapeHtml(value)
+      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  const rows: string[] = [];
+  const lines = markdown.split(/\r?\n/);
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("|")) {
+      const tableLines: string[] = [];
+      while (index < lines.length && lines[index].trim().startsWith("|")) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      const parsed = tableLines.filter((item) => !/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(item));
+      const tableRows = parsed.map((item) => item.replace(/^\||\|$/g, "").split("|").map((cell) => inline(cell.trim())));
+      if (tableRows.length) {
+        const [header, ...body] = tableRows;
+        rows.push("<table><thead><tr>" + header.map((cell) => `<th>${cell}</th>`).join("") + "</tr></thead><tbody>");
+        body.forEach((cells) => rows.push("<tr>" + cells.map((cell) => `<td>${cell}</td>`).join("") + "</tr>"));
+        rows.push("</tbody></table>");
+      }
+      continue;
+    }
+    if (line.startsWith("# ")) rows.push(`<h1>${inline(line.slice(2))}</h1>`);
+    else if (line.startsWith("## ")) rows.push(`<h2>${inline(line.slice(3))}</h2>`);
+    else if (line.startsWith("### ")) rows.push(`<h3>${inline(line.slice(4))}</h3>`);
+    else if (/^[-*]\s+/.test(line)) rows.push(`<ul><li>${inline(line.replace(/^[-*]\s+/, ""))}</li></ul>`);
+    else if (/^\d+\.\s+/.test(line)) rows.push(`<ol><li>${inline(line.replace(/^\d+\.\s+/, ""))}</li></ol>`);
+    else rows.push(`<p>${inline(line)}</p>`);
+    index += 1;
+  }
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>
+    body{font-family:Arial,sans-serif;line-height:1.55;color:#111827;max-width:920px;margin:36px auto;padding:0 28px}
+    h1{font-size:26px;line-height:1.2;margin:0 0 16px;color:#0f172a}
+    h2{font-size:20px;margin:28px 0 10px;padding-top:12px;border-top:3px solid #0f766e;color:#0f172a}
+    h3{font-size:15px;margin:18px 0 8px;color:#0f766e}
+    p{margin:8px 0 12px}
+    table{border-collapse:collapse;width:100%;margin:12px 0 18px;font-size:12px}
+    th{background:#0f172a;color:#fff;text-align:left}
+    td,th{border:1px solid #d1d5db;padding:7px;vertical-align:top}
+    tr:nth-child(even) td{background:#f8fafc}
+    ul,ol{margin:6px 0 10px 22px}
+    code{background:#f1f5f9;padding:1px 4px;border-radius:4px}
+  </style></head><body>${rows.join("\n")}</body></html>`;
 }
 
 function fileToBase64(file: File) {
