@@ -135,3 +135,44 @@ export type EvidenceEngineHealth = {
   runtime?: string;
   llm_required?: string;
 };
+
+export type EvidenceEngineUniversalQueryRequest = {
+  question: string;
+  max_results?: number;
+  live_search?: boolean;
+  include_faers?: boolean;
+};
+
+export type EvidenceEngineHydrateRecordRequest = {
+  record: Record<string, unknown>;
+};
+
+export type EvidenceEngineFaersRequest = {
+  drug: string;
+  indication?: string;
+  max_results?: number;
+  live_fetch?: boolean;
+};
+
+export type EvidenceEngineTrialsRequest = {
+  condition?: string;
+  intervention?: string;
+  query?: string;
+  max_results?: number;
+  live_fetch?: boolean;
+};
+
+export type EvidenceEngineLabelRequest = {
+  drug: string;
+  max_results?: number;
+  live_fetch?: boolean;
+};
+
+export type EvidenceEnginePipelineRunRequest = {
+  question: string;
+  kind?: "universal_query" | "full_slr" | "safety_review";
+  max_results?: number;
+  live_search?: boolean;
+  include_faers?: boolean;
+  metadata?: Record<string, unknown>;
+};

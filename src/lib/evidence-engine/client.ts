@@ -7,12 +7,18 @@ import type {
   EvidenceEngineDocumentChatResponse,
   EvidenceEngineExportRequest,
   EvidenceEngineExportResponse,
+  EvidenceEngineFaersRequest,
+  EvidenceEngineHydrateRecordRequest,
+  EvidenceEngineLabelRequest,
   EvidenceEnginePdfExtractionRequest,
   EvidenceEnginePdfExtractionResponse,
+  EvidenceEnginePipelineRunRequest,
   EvidenceEngineProtocolRequest,
   EvidenceEngineProtocolResponse,
   EvidenceEngineRunRequest,
   EvidenceEngineRunResponse,
+  EvidenceEngineTrialsRequest,
+  EvidenceEngineUniversalQueryRequest,
 } from "./types";
 
 const defaultEngineBaseUrl = "https://evidaraos-python-api-production.up.railway.app";
@@ -163,4 +169,100 @@ export async function runEvidenceEngineExport(input: EvidenceEngineExportRequest
     body: JSON.stringify(input),
   });
   return parseEngineResponse<EvidenceEngineExportResponse>(response);
+}
+
+export async function runEvidenceEngineUniversalQuery(input: EvidenceEngineUniversalQueryRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/query/run`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      question: input.question,
+      max_results: input.max_results ?? 10,
+      live_search: input.live_search ?? false,
+      include_faers: input.include_faers ?? false,
+    }),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function hydrateEvidenceEngineRecord(input: EvidenceEngineHydrateRecordRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/records/hydrate`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify(input),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function runEvidenceEngineFaers(input: EvidenceEngineFaersRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/safety/faers`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      drug: input.drug,
+      indication: input.indication ?? "",
+      max_results: input.max_results ?? 100,
+      live_fetch: input.live_fetch ?? false,
+    }),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function runEvidenceEngineTrials(input: EvidenceEngineTrialsRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/trials/search`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      condition: input.condition ?? "",
+      intervention: input.intervention ?? "",
+      query: input.query ?? "",
+      max_results: input.max_results ?? 10,
+      live_fetch: input.live_fetch ?? true,
+    }),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function runEvidenceEngineLabel(input: EvidenceEngineLabelRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/regulatory/label`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      drug: input.drug,
+      max_results: input.max_results ?? 5,
+      live_fetch: input.live_fetch ?? true,
+    }),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function createEvidenceEnginePipelineRun(input: EvidenceEnginePipelineRunRequest): Promise<Record<string, unknown>> {
+  const response = await fetch(`${engineBaseUrl()}/runs`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      question: input.question,
+      kind: input.kind ?? "universal_query",
+      max_results: input.max_results ?? 10,
+      live_search: input.live_search ?? false,
+      include_faers: input.include_faers ?? false,
+      metadata: input.metadata ?? {},
+    }),
+  });
+  return parseEngineResponse<Record<string, unknown>>(response);
+}
+
+export async function listEvidenceEnginePipelineRuns(limit = 10): Promise<Array<Record<string, unknown>>> {
+  const response = await fetch(`${engineBaseUrl()}/runs?limit=${encodeURIComponent(String(limit))}`, {
+    method: "GET",
+    headers: engineHeaders(),
+    cache: "no-store",
+  });
+  return parseEngineResponse<Array<Record<string, unknown>>>(response);
 }

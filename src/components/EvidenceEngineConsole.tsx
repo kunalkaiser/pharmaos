@@ -105,6 +105,14 @@ type DocumentChatResponse = {
   error?: string;
 };
 
+type SourceMethodResponse = {
+  ok: boolean;
+  engineConnected: boolean;
+  action?: string;
+  result?: unknown;
+  error?: string;
+};
+
 const fallbackChains: Chain[] = [
   { id: "full_slr", name: "Full SLR", status: "available", outputs: ["PICO protocol", "search log", "PRISMA scaffold"] },
   { id: "payer_brief", name: "Payer Brief", status: "available", outputs: ["value story support", "claim traceability", "evidence gaps"] },
@@ -122,6 +130,7 @@ const starterQuestion =
   "Compare safety and efficacy evidence for dupilumab versus placebo in adults with moderate-to-severe atopic dermatitis, focusing on randomized trials, adverse events, EASI response, itch reduction, and discontinuation.";
 
 const frameworkOptions = ["Auto", "PICO", "PECO", "PICOC", "CoCoPop", "SPICE", "ECLIPSE"] as const;
+const sourceMethodTabs = ["universal", "hydrate", "safety", "trials", "labels", "runs"] as const;
 
 function safeJson(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -334,6 +343,11 @@ export function EvidenceEngineConsole() {
   const [chatResponse, setChatResponse] = useState<DocumentChatResponse | null>(null);
   const [exportingFormat, setExportingFormat] = useState<"pdf" | null>(null);
   const [exportError, setExportError] = useState("");
+  const [sourceMethodTab, setSourceMethodTab] = useState<(typeof sourceMethodTabs)[number]>("universal");
+  const [sourceMethodLoading, setSourceMethodLoading] = useState("");
+  const [sourceMethodResponse, setSourceMethodResponse] = useState<SourceMethodResponse | null>(null);
+  const [hydrateRecordJson, setHydrateRecordJson] = useState('{\n  "id": "example-doi",\n  "source": "manual",\n  "title": "Source record for hydration",\n  "doi": ""\n}');
+  const [runKind, setRunKind] = useState<"universal_query" | "full_slr" | "safety_review">("universal_query");
 
   useEffect(() => {
     let cancelled = false;
@@ -491,6 +505,108 @@ export function EvidenceEngineConsole() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function runSourceMethod(action: string, payload: Record<string, unknown>) {
+    setSourceMethodLoading(action);
+    setSourceMethodResponse(null);
+    try {
+      const response = await fetch("/api/internal/evidence-engine/source-methods", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(new URLSearchParams(window.location.search).get("access_token")
+            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
+            : {}),
+        },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      setSourceMethodResponse((await response.json()) as SourceMethodResponse);
+    } catch (error) {
+      setSourceMethodResponse({
+        ok: false,
+        engineConnected: false,
+        action,
+        error: error instanceof Error ? error.message : "Source method request failed.",
+      });
+    } finally {
+      setSourceMethodLoading("");
+    }
+  }
+
+  function runUniversalQuery() {
+    return runSourceMethod("universal_query", {
+      question,
+      max_results: maxResults,
+      live_search: liveSearch,
+      include_faers: true,
+    });
+  }
+
+  function runHydrationRetry() {
+    let record: Record<string, unknown>;
+    try {
+      record = JSON.parse(hydrateRecordJson) as Record<string, unknown>;
+    } catch {
+      setSourceMethodResponse({
+        ok: false,
+        engineConnected: false,
+        action: "hydrate_record",
+        error: "Hydration record JSON is not valid.",
+      });
+      return;
+    }
+    return runSourceMethod("hydrate_record", { record });
+  }
+
+  function runFaersExplorer() {
+    return runSourceMethod("faers", {
+      drug: interventionOrExposure || drug,
+      indication: population || indication,
+      max_results: Math.min(Math.max(maxResults * 10, 10), 200),
+      live_fetch: liveSearch,
+    });
+  }
+
+  function runTrialExplorer() {
+    return runSourceMethod("trials", {
+      condition: population || indication,
+      intervention: interventionOrExposure || drug,
+      query: question,
+      max_results: maxResults,
+      live_fetch: true,
+    });
+  }
+
+  function runLabelExplorer() {
+    return runSourceMethod("label", {
+      drug: interventionOrExposure || drug,
+      max_results: 5,
+      live_fetch: true,
+    });
+  }
+
+  function createTrackedRun() {
+    return runSourceMethod("create_run", {
+      question,
+      kind: runKind,
+      max_results: maxResults,
+      live_search: liveSearch,
+      include_faers: true,
+      metadata: {
+        framework: framework === "Auto" ? "" : framework,
+        population,
+        intervention_or_exposure: interventionOrExposure,
+        comparator,
+        outcomes: splitOutcomes(outcomesText),
+        timeframe,
+        context,
+      },
+    });
+  }
+
+  function listTrackedRuns() {
+    return runSourceMethod("list_runs", { limit: 10 });
   }
 
   async function runPdfExtraction() {
@@ -1086,6 +1202,199 @@ export function EvidenceEngineConsole() {
           ) : null}
         </div>
       ) : null}
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Source & Methods Console</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">Run backend evidence tools directly</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              These panels expose Python backend functions that were previously hidden behind the main workflow: universal query routing,
+              single-record hydration, FAERS, trial registry search, label lookup, and tracked asynchronous runs.
+            </p>
+          </div>
+          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">Python-backed</span>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {sourceMethodTabs.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setSourceMethodTab(tab)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                sourceMethodTab === tab ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {{
+                universal: "Universal Query",
+                hydrate: "Hydration",
+                safety: "FAERS",
+                trials: "Trials",
+                labels: "Labels",
+                runs: "Run History",
+              }[tab]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            {sourceMethodTab === "universal" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="font-semibold text-slate-950">Universal query router</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Parses entities, recommends chains, builds retrieval strategies, and can run SLR/FAERS from one question.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={runUniversalQuery}
+                  disabled={Boolean(sourceMethodLoading)}
+                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {sourceMethodLoading === "universal_query" ? "Running universal query..." : "Run Universal Query"}
+                </button>
+              </div>
+            ) : null}
+
+            {sourceMethodTab === "hydrate" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="font-semibold text-slate-950">Retry source hydration</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Sends one source record to PubMed DOI hydration, PMC/Europe PMC, and open-access full-text recovery logic.
+                  </p>
+                </div>
+                <textarea
+                  value={hydrateRecordJson}
+                  onChange={(event) => setHydrateRecordJson(event.target.value)}
+                  rows={8}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono text-xs leading-5 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+                <button
+                  type="button"
+                  onClick={runHydrationRetry}
+                  disabled={Boolean(sourceMethodLoading)}
+                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {sourceMethodLoading === "hydrate_record" ? "Retrying hydration..." : "Retry Hydration"}
+                </button>
+              </div>
+            ) : null}
+
+            {sourceMethodTab === "safety" ? (
+              <div className="space-y-4">
+                <p className="font-semibold text-slate-950">FAERS signal explorer</p>
+                <p className="text-sm leading-6 text-slate-600">
+                  Uses Intervention / Exposure as the drug and Population as indication context. FAERS remains signal-only.
+                </p>
+                <button
+                  type="button"
+                  onClick={runFaersExplorer}
+                  disabled={Boolean(sourceMethodLoading)}
+                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {sourceMethodLoading === "faers" ? "Loading FAERS..." : "Run FAERS Explorer"}
+                </button>
+              </div>
+            ) : null}
+
+            {sourceMethodTab === "trials" ? (
+              <div className="space-y-4">
+                <p className="font-semibold text-slate-950">ClinicalTrials.gov explorer</p>
+                <p className="text-sm leading-6 text-slate-600">
+                  Retrieves trial records, status counts, phase counts, eligibility summaries, and source URLs.
+                </p>
+                <button
+                  type="button"
+                  onClick={runTrialExplorer}
+                  disabled={Boolean(sourceMethodLoading)}
+                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {sourceMethodLoading === "trials" ? "Searching trials..." : "Search Trials"}
+                </button>
+              </div>
+            ) : null}
+
+            {sourceMethodTab === "labels" ? (
+              <div className="space-y-4">
+                <p className="font-semibold text-slate-950">Regulatory label lookup</p>
+                <p className="text-sm leading-6 text-slate-600">
+                  Retrieves openFDA label sections for the selected intervention, including warnings, contraindications, and adverse reactions.
+                </p>
+                <button
+                  type="button"
+                  onClick={runLabelExplorer}
+                  disabled={Boolean(sourceMethodLoading)}
+                  className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {sourceMethodLoading === "label" ? "Loading labels..." : "Lookup Label"}
+                </button>
+              </div>
+            ) : null}
+
+            {sourceMethodTab === "runs" ? (
+              <div className="space-y-4">
+                <p className="font-semibold text-slate-950">Tracked async run queue</p>
+                <p className="text-sm leading-6 text-slate-600">
+                  Creates or lists Python-side tracked runs with step status for longer-running workflows.
+                </p>
+                <select
+                  value={runKind}
+                  onChange={(event) => setRunKind(event.target.value as "universal_query" | "full_slr" | "safety_review")}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                >
+                  <option value="universal_query">Universal query</option>
+                  <option value="full_slr">Full SLR</option>
+                  <option value="safety_review">Safety review</option>
+                </select>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={createTrackedRun}
+                    disabled={Boolean(sourceMethodLoading)}
+                    className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {sourceMethodLoading === "create_run" ? "Creating..." : "Create Tracked Run"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={listTrackedRuns}
+                    disabled={Boolean(sourceMethodLoading)}
+                    className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    {sourceMethodLoading === "list_runs" ? "Loading..." : "List Runs"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Method output</p>
+                <h4 className="mt-2 font-semibold text-slate-950">
+                  {sourceMethodResponse ? (sourceMethodResponse.ok ? "Backend result ready" : "Backend method needs attention") : "Waiting for method run"}
+                </h4>
+              </div>
+              {sourceMethodResponse?.action ? <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{sourceMethodResponse.action}</span> : null}
+            </div>
+            {sourceMethodResponse?.error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{sourceMethodResponse.error}</p> : null}
+            {sourceMethodResponse?.result ? (
+              <pre className="mt-4 max-h-[34rem] overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+                {safeJson(sourceMethodResponse.result)}
+              </pre>
+            ) : (
+              <p className="mt-4 rounded-xl bg-white p-4 text-sm leading-6 text-slate-600">
+                Run one of the method panels to inspect the raw, source-linked Python backend artifact before it is promoted or synthesized.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
