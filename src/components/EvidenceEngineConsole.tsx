@@ -316,6 +316,8 @@ function inferTimeframeFromQuestion(value: string) {
   return "";
 }
 
+const starterTimeframe = inferTimeframeFromQuestion(starterQuestion);
+
 export function EvidenceEngineConsole() {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
@@ -327,7 +329,7 @@ export function EvidenceEngineConsole() {
   const [interventionOrExposure, setInterventionOrExposure] = useState("dupilumab");
   const [comparator, setComparator] = useState("placebo");
   const [outcomesText, setOutcomesText] = useState("randomized trials, adverse events, EASI response, itch reduction, discontinuation");
-  const [timeframe, setTimeframe] = useState("week 16 and longer-term follow-up where available");
+  const [timeframe, setTimeframe] = useState(starterTimeframe);
   const [context, setContext] = useState("");
   const [protocolLoading, setProtocolLoading] = useState(false);
   const [protocolStatus, setProtocolStatus] = useState("Protocol fields can be edited before running.");
@@ -371,6 +373,7 @@ export function EvidenceEngineConsole() {
     const requestedFramework = params.get("framework") ?? "";
     if (requestedChain) setSelectedChainId(requestedChain);
     if (requestedQuestion) setQuestion(requestedQuestion);
+    if (requestedQuestion) setTimeframe(inferTimeframeFromQuestion(requestedQuestion));
     if (requestedDrug) {
       setDrug(requestedDrug);
       setInterventionOrExposure(requestedDrug);
@@ -433,6 +436,7 @@ export function EvidenceEngineConsole() {
   async function autofillProtocol() {
     setProtocolLoading(true);
     setProtocolStatus("Reading the question and drafting protocol fields...");
+    setTimeframe(inferTimeframeFromQuestion(question));
     try {
       const response = await fetch("/api/internal/evidence-engine/protocol", {
         method: "POST",
@@ -467,8 +471,6 @@ export function EvidenceEngineConsole() {
       if (pico.comparator && pico.comparator !== "not specified") setComparator(pico.comparator);
       if (pico.outcomes?.length) setOutcomesText(pico.outcomes.join(", "));
       if (pico.context) setContext(pico.context);
-      const inferredTimeframe = inferTimeframeFromQuestion(question);
-      if (inferredTimeframe) setTimeframe(inferredTimeframe);
       setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
     } catch (error) {
       setProtocolStatus(error instanceof Error ? error.message : "Protocol auto-fill failed.");
