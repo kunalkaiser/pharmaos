@@ -24,10 +24,10 @@ export default function EvidenceEnginePage() {
         <div className="mt-12 rounded-3xl border border-teal-100 bg-teal-50 p-6">
           <p className="text-sm font-semibold text-teal-950">Current implementation note</p>
           <p className="mt-2 text-sm leading-6 text-teal-900">
-            This is an interactive product model. It does not claim to run live retrieval or agent execution until a backend orchestration service is connected.
+            The protected workspace now calls the private Python Evidence Engine for candidate-only analysis workflows, source-linked records, manual PDF extraction, document chat, and report export. Human review remains required before any medical, payer, regulatory, or enterprise use.
           </p>
           <Link href="/architecture" className="mt-5 inline-flex rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
-            View full architecture
+            View live architecture status
           </Link>
         </div>
       </div>

@@ -8,14 +8,14 @@ export default function ArchitecturePage() {
       <div className="mx-auto max-w-[1500px]">
         <SectionHeading
           eyebrow="EvidaraOS architecture"
-          title="A clickable white-box architecture"
-          subtitle="Explore the full operating model: request interface, EpiEngine scoring, source retrieval, evidence chains, classification, governance, and function-specific outputs."
+          title="Live status of the white-box architecture"
+          subtitle="Explore what is live, what is partially wired, and what remains planned across request intake, EpiEngine scoring, source retrieval, evidence chains, governance, and function-specific outputs."
         />
         <div className="mt-8">
           <ArchitectureExplorer />
         </div>
         <div className="mt-8">
-          <TrustBoundary copy="This architecture is an interactive product model. The current repository does not include live retrieval, scoring, auth, citation storage, or audit-log services, so implementation-specific claims should be validated before enterprise use." />
+          <TrustBoundary copy="This page is a product-status map, not a certification claim. Live modules still produce candidate-only evidence until reviewed; partial and planned modules must not be represented as validated enterprise controls." />
         </div>
       </div>
     </main>
