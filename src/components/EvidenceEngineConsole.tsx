@@ -305,6 +305,17 @@ function splitOutcomes(value: string) {
     .slice(0, 20);
 }
 
+function inferTimeframeFromQuestion(value: string) {
+  const normalized = value.replace(/[–—]/g, "-");
+  const trialYears = normalized.match(/\b(?:randomi[sz]ed\s+controlled\s+trials?|RCTs?)\s*,?\s*((?:19|20)\d{2}\s*-\s*(?:19|20)\d{2}|(?:19|20)\d{2})\b/i);
+  if (trialYears?.[1]) return `Randomised controlled trials, ${trialYears[1].replace(/\s+/g, "")}`;
+  const dateRange = normalized.match(/\b((?:19|20)\d{2})\s*-\s*((?:19|20)\d{2})\b/);
+  if (dateRange?.[1] && dateRange[2]) return `${dateRange[1]}-${dateRange[2]}`;
+  const sinceYear = normalized.match(/\bfrom\s+((?:19|20)\d{2})\b/i);
+  if (sinceYear?.[1]) return `from ${sinceYear[1]}`;
+  return "";
+}
+
 export function EvidenceEngineConsole() {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
@@ -456,6 +467,8 @@ export function EvidenceEngineConsole() {
       if (pico.comparator && pico.comparator !== "not specified") setComparator(pico.comparator);
       if (pico.outcomes?.length) setOutcomesText(pico.outcomes.join(", "));
       if (pico.context) setContext(pico.context);
+      const inferredTimeframe = inferTimeframeFromQuestion(question);
+      if (inferredTimeframe) setTimeframe(inferredTimeframe);
       setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
     } catch (error) {
       setProtocolStatus(error instanceof Error ? error.message : "Protocol auto-fill failed.");
