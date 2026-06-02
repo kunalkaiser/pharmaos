@@ -52,7 +52,10 @@ type ProtocolResponse = {
       context: string;
       disease_class?: string;
       domain_rule_set?: string;
+      disease_modifiers?: string[];
+      domain_rules_applied?: string[];
       inferred_elements?: string[];
+      inference_records?: Array<Record<string, string>>;
       picots_complete?: boolean;
       protocol_warnings?: string[];
     };
@@ -387,8 +390,10 @@ export function EvidenceEngineConsole() {
     diseaseClass: string;
     domainRuleSet: string;
     inferredElements: string[];
+    domainRulesApplied: string[];
+    diseaseModifiers: string[];
     picotsComplete: boolean | null;
-  }>({ diseaseClass: "", domainRuleSet: "", inferredElements: [], picotsComplete: null });
+  }>({ diseaseClass: "", domainRuleSet: "", inferredElements: [], domainRulesApplied: [], diseaseModifiers: [], picotsComplete: null });
   const [protocolLoading, setProtocolLoading] = useState(false);
   const [protocolStatus, setProtocolStatus] = useState("Protocol fields can be edited before running.");
   const [maxResults, setMaxResults] = useState(10);
@@ -533,6 +538,8 @@ export function EvidenceEngineConsole() {
         diseaseClass: pico.disease_class ?? "",
         domainRuleSet: pico.domain_rule_set ?? "",
         inferredElements: pico.inferred_elements ?? [],
+        domainRulesApplied: pico.domain_rules_applied ?? [],
+        diseaseModifiers: pico.disease_modifiers ?? [],
         picotsComplete: typeof pico.picots_complete === "boolean" ? pico.picots_complete : null,
       });
       setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
@@ -934,6 +941,11 @@ export function EvidenceEngineConsole() {
                         {protocolMeta.domainRuleSet}
                       </span>
                     )}
+                    {protocolMeta.diseaseModifiers.map((modifier) => (
+                      <span key={modifier} className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                        {modifier.replace(/_/g, " ")}
+                      </span>
+                    ))}
                     {protocolMeta.picotsComplete === false && (
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
                         PICOTS incomplete

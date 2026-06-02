@@ -51,6 +51,11 @@ function detectDiseaseClass(question: string) {
   return "universal";
 }
 
+function detectRareDisease(question: string) {
+  const lowered = question.toLowerCase();
+  return /\b(rare|orphan|ultra-rare|ultrarare|low-prevalence|natural history|registry|orphan drug|duchenne|spinal muscular atrophy|sma|als|cystic fibrosis|gaucher|fabry|pompe|rett syndrome|angelman|pnh|hereditary angioedema)\b/.test(lowered);
+}
+
 function domainRuleSet(diseaseClass: string) {
   const map: Record<string, string> = {
     oncology: "DOMAIN-SLR-ONCOLOGY",
@@ -59,6 +64,7 @@ function domainRuleSet(diseaseClass: string) {
     infectious_disease: "DOMAIN-SLR-INFECTIOUS",
     cardiovascular: "DOMAIN-SLR-CARDIOVASCULAR",
     endocrinology_metabolic: "DOMAIN-SLR-ENDOCRINOLOGY",
+    rare_disease: "DOMAIN-SLR-RARE_DISEASE",
     universal: "DOMAIN-SLR-UNIVERSAL-BASELINE",
   };
   return map[diseaseClass] ?? "DOMAIN-SLR-UNIVERSAL-BASELINE";
@@ -83,6 +89,22 @@ function inferProtocolGaps(question: string, diseaseClass: string, comparator: s
   return Array.from(new Set(inferred));
 }
 
+function rareInferenceRecords(question: string) {
+  const text = question.toLowerCase();
+  if (/\b(gene|variant|mutation|genotype|phenotype|syndrome|diagnostic criteria|confirmed diagnosis|natural history)\b/.test(text)) {
+    return [];
+  }
+  return [
+    {
+      field: "population",
+      value: "Rare disease protocol should specify syndrome alias, gene/variant or phenotype, age of onset, and diagnostic criteria when relevant.",
+      source: "frontend_protocol_normalizer",
+      rule_id: "RARE_DISEASE_POPULATION_EXPANSION",
+      rationale: "Rare disease evidence is heterogeneous; genetic, phenotypic, and diagnostic anchors improve retrieval and screening.",
+    },
+  ];
+}
+
 function normalizeProtocol(question: string, protocol: EvidenceEngineProtocolResponse): EvidenceEngineProtocolResponse {
   const pico = { ...protocol.pico };
   const framework = { ...protocol.framework };
@@ -103,11 +125,17 @@ function normalizeProtocol(question: string, protocol: EvidenceEngineProtocolRes
   if (parsedComparator && parsedComparator.toLowerCase() !== "not specified") pico.comparator = parsedComparator;
   pico.outcomes = inferOutcomes(question, pico.outcomes || []);
   if (pico.framework === "PICOT") pico.framework = "PICO";
-  const diseaseClass = detectDiseaseClass(question);
+  const rareDisease = detectRareDisease(question);
+  const detectedDiseaseClass = detectDiseaseClass(question);
+  const diseaseClass = rareDisease && detectedDiseaseClass === "universal" ? "rare_disease" : detectedDiseaseClass;
   const inferredElements = inferProtocolGaps(question, diseaseClass, pico.comparator);
+  const rareRecords = rareDisease ? rareInferenceRecords(question) : [];
   pico.disease_class = pico.disease_class || diseaseClass;
+  pico.disease_modifiers = Array.from(new Set([...(pico.disease_modifiers || []), ...(rareDisease ? ["rare_disease"] : [])]));
+  pico.domain_rules_applied = Array.from(new Set([...(pico.domain_rules_applied || ["DOMAIN-SLR-UNIVERSAL-BASELINE", domainRuleSet(diseaseClass)]), ...(rareDisease ? ["DOMAIN-SLR-RARE_DISEASE"] : [])]));
   pico.domain_rule_set = pico.domain_rule_set || domainRuleSet(diseaseClass);
-  pico.inferred_elements = Array.from(new Set([...(pico.inferred_elements || []), ...inferredElements]));
+  pico.inferred_elements = Array.from(new Set([...(pico.inferred_elements || []), ...inferredElements, ...rareRecords.map((item) => item.value)]));
+  pico.inference_records = [...(pico.inference_records || []), ...rareRecords];
   pico.picots_complete = pico.inferred_elements.length === 0;
   pico.human_review_required = true;
   pico.protocol_warnings = pico.inferred_elements.length
