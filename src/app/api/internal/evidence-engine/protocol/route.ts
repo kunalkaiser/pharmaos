@@ -19,7 +19,8 @@ export async function POST(request: Request) {
 
   const question = cleanString(body.question, 1200);
   const requestedFramework = cleanString(body.framework, 24);
-  const framework = supportedFrameworks.has(requestedFramework) ? requestedFramework : undefined;
+  const normalizedFramework = requestedFramework === "PICOT" ? "PICO" : requestedFramework;
+  const framework = supportedFrameworks.has(normalizedFramework) ? normalizedFramework : undefined;
 
   if (!question) {
     return NextResponse.json({ ok: false, error: "A question is required before protocol auto-fill." }, { status: 400 });

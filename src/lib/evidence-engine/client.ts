@@ -48,10 +48,21 @@ async function parseEngineResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
+    const detail = typeof body === "object" && body && "detail" in body ? (body as { detail: unknown }).detail : null;
     const message =
-      typeof body === "object" && body && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : `Evidence engine request failed with HTTP ${response.status}.`;
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail
+              .map((item) =>
+                typeof item === "object" && item && "msg" in item
+                  ? String((item as { msg: unknown }).msg)
+                  : JSON.stringify(item),
+              )
+              .join("; ")
+          : detail
+            ? JSON.stringify(detail)
+            : `Evidence engine request failed with HTTP ${response.status}.`;
     throw new Error(message);
   }
 
@@ -77,6 +88,7 @@ export async function getEvidenceEngineChains(): Promise<EvidenceEngineChain[]> 
 }
 
 export async function runEvidenceEngineChain(input: EvidenceEngineRunRequest): Promise<EvidenceEngineRunResponse> {
+  const framework = input.framework === "PICOT" ? "PICO" : input.framework || null;
   const response = await fetch(`${engineBaseUrl()}/analysis/run`, {
     method: "POST",
     headers: engineHeaders(),
@@ -86,7 +98,7 @@ export async function runEvidenceEngineChain(input: EvidenceEngineRunRequest): P
       question: input.question,
       drug: input.drug ?? "",
       indication: input.indication ?? "",
-      framework: input.framework || null,
+      framework,
       population: input.population ?? "",
       intervention_or_exposure: input.intervention_or_exposure ?? "",
       comparator: input.comparator ?? "",
@@ -102,13 +114,14 @@ export async function runEvidenceEngineChain(input: EvidenceEngineRunRequest): P
 }
 
 export async function buildEvidenceEngineProtocol(input: EvidenceEngineProtocolRequest): Promise<EvidenceEngineProtocolResponse> {
+  const framework = input.framework === "PICOT" ? "PICO" : input.framework || null;
   const response = await fetch(`${engineBaseUrl()}/review/start`, {
     method: "POST",
     headers: engineHeaders(),
     cache: "no-store",
     body: JSON.stringify({
       question: input.question,
-      framework: input.framework || null,
+      framework,
     }),
   });
   return parseEngineResponse<EvidenceEngineProtocolResponse>(response);
