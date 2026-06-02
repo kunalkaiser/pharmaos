@@ -2,27 +2,27 @@ import Link from "next/link";
 
 const groups = [
   {
-    title: "Evaluate",
+    title: "Start",
     links: [
-      ["Platform", "/"],
-      ["Solutions", "/solutions"],
-      ["Query Journey", "/query-journey"],
+      ["Run Analysis", "/api/preview-access?token=evidaraos-preview-access"],
+      ["Upload a Paper", "/api/preview-access?token=evidaraos-preview-access"],
+      ["Request Demo", "/demo"],
     ],
   },
   {
-    title: "Understand",
+    title: "Showroom",
     links: [
-      ["Evidence Engine", "/evidence-engine"],
-      ["Architecture", "/architecture"],
-      ["Data & Methodology", "/data-methodology"],
-    ],
-  },
-  {
-    title: "Trust",
-    links: [
-      ["Security / Trust", "/security-trust"],
+      ["How It Works", "/query-journey"],
+      ["Example Workflows", "/solutions"],
       ["Resources", "/resources"],
-      ["Company", "/company"],
+    ],
+  },
+  {
+    title: "Diligence",
+    links: [
+      ["Architecture Status", "/architecture"],
+      ["Data & Methodology", "/data-methodology"],
+      ["Trust", "/security-trust"],
     ],
   },
 ];
@@ -37,10 +37,10 @@ export function SiteFooter() {
             <span className="text-base font-semibold tracking-tight">EvidaraOS</span>
           </Link>
           <p className="mt-4 max-w-md text-sm leading-6 text-slate-300">
-            A white-box pharmaceutical evidence operating system for US biotech and pharma teams evaluating disease burden, evidence strategy, and governed outputs.
+            A source-linked biomedical evidence workbench for teams that need reports, review queues, document extraction, charts, and governance boundaries without hiding the method.
           </p>
-          <Link href="/demo" className="mt-5 inline-flex rounded-full bg-teal-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-teal-400">
-            Request demo
+          <Link href="/api/preview-access?token=evidaraos-preview-access" className="mt-5 inline-flex rounded-full bg-teal-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-teal-400">
+            Start evidence run
           </Link>
         </div>
         <div className="grid gap-6 sm:grid-cols-3">

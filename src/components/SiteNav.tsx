@@ -3,13 +3,11 @@ import Link from "next/link";
 const workspacePreviewHref = "/api/preview-access?token=evidaraos-preview-access";
 
 const links = [
-  { href: "/", label: "Platform" },
-  { href: "/solutions", label: "Solutions" },
-  { href: "/evidence-engine", label: "Evidence Engine" },
-  { href: "/data-methodology", label: "Data & Methodology" },
-  { href: "/security-trust", label: "Security / Trust" },
-  { href: "/resources", label: "Resources" },
-  { href: "/company", label: "Company" },
+  { href: "/", label: "Start" },
+  { href: workspacePreviewHref, label: "Run Analysis" },
+  { href: "/query-journey", label: "How It Works" },
+  { href: "/architecture", label: "Status" },
+  { href: "/security-trust", label: "Trust" },
 ];
 
 export function SiteNav() {
@@ -28,10 +26,10 @@ export function SiteNav() {
           ))}
         </div>
         <Link href={workspacePreviewHref} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
-          Launch Workspace
+          Upload Paper
         </Link>
         <Link href="/demo" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
-          Request Access
+          Request Demo
         </Link>
       </nav>
     </header>
