@@ -40,6 +40,49 @@ function inferOutcomes(question: string, existing: string[]) {
   return Array.from(outcomes);
 }
 
+function detectDiseaseClass(question: string) {
+  const lowered = question.toLowerCase();
+  if (/\b(cancer|tumou?r|carcinoma|sarcoma|lymphoma|leukemia|leukaemia|myeloma|nsclc|sclc|melanoma|oncolog|metastatic|adjuvant|neoadjuvant|checkpoint|pd-?1|pd-?l1|alk|egfr)\b/.test(lowered)) return "oncology";
+  if (/\b(alzheimer|parkinson|multiple sclerosis|\bms\b|epilep|seizure|stroke|migraine|als|myasthenia|neurolog|dementia|edss|nihss|updrs)\b/.test(lowered)) return "neurology";
+  if (/\b(rheumatoid|lupus|sle|psoriasis|psoriatic|ankylosing|crohn|ulcerative colitis|ibd|vasculitis|sarcoidosis|atopic dermatitis|eczema|biologic|jak inhibitor|tnf)\b/.test(lowered)) return "autoimmune_inflammatory";
+  if (/\b(hiv|hepatitis|hbv|hcv|tuberculosis|\btb\b|bacterial|viral|sars-cov-2|covid|sepsis|pathogen|antibiotic|antiviral)\b/.test(lowered)) return "infectious_disease";
+  if (/\b(heart failure|coronary|myocardial|hypertension|atrial fibrillation|\baf\b|arrhythmia|valvular|mace|ldl|ascvd|statin|pcsk9|stroke prevention)\b/.test(lowered)) return "cardiovascular";
+  if (/\b(diabetes|t1d|t2d|obesity|thyroid|osteoporosis|hba1c|glp-1|sglt2|insulin|metformin|lipid disorder|tsh)\b/.test(lowered)) return "endocrinology_metabolic";
+  return "universal";
+}
+
+function domainRuleSet(diseaseClass: string) {
+  const map: Record<string, string> = {
+    oncology: "DOMAIN-SLR-ONCOLOGY",
+    neurology: "DOMAIN-SLR-NEUROLOGY",
+    autoimmune_inflammatory: "DOMAIN-SLR-AUTOIMMUNE",
+    infectious_disease: "DOMAIN-SLR-INFECTIOUS",
+    cardiovascular: "DOMAIN-SLR-CARDIOVASCULAR",
+    endocrinology_metabolic: "DOMAIN-SLR-ENDOCRINOLOGY",
+    universal: "DOMAIN-SLR-UNIVERSAL-BASELINE",
+  };
+  return map[diseaseClass] ?? "DOMAIN-SLR-UNIVERSAL-BASELINE";
+}
+
+function inferProtocolGaps(question: string, diseaseClass: string, comparator: string) {
+  const text = `${question} ${comparator}`.toLowerCase();
+  const inferred: string[] = [];
+  if (!/\b(adults?|children|adolescents?|pediatric|paediatric|geriatric|older adults?|\d+\s*(?:years|year|yo|yrs))\b/.test(text)) {
+    inferred.push("Age range/population age band not explicit.");
+  }
+  if (diseaseClass === "oncology") {
+    if (!/\b(ecog|kps|performance status)\b/.test(text)) inferred.push("Performance status such as ECOG/KPS not specified.");
+    if (/\b(pembrolizumab|nivolumab|atezolizumab|durvalumab|cemiplimab|checkpoint|pd-?1|pd-?l1)\b/.test(text)) {
+      if (!/\b(pd-?l1|tps|cps)\b/.test(text)) inferred.push("Checkpoint inhibitor query lacks PD-L1 TPS/CPS threshold.");
+      if (!/\b(egfr|alk|ros1|braf|driver|wild[- ]type|mutation)\b/.test(text)) inferred.push("Checkpoint inhibitor query lacks driver mutation status.");
+    }
+    if (/\b(chemotherapy|platinum)\b/.test(comparator.toLowerCase()) && !/\b(auc|mg\s*\/\s*m|q\d+w?|cycle|cycles|carboplatin|cisplatin|pemetrexed|paclitaxel|docetaxel)\b/.test(text)) {
+      inferred.push("Chemotherapy comparator requires named regimen, dose, schedule, and cycles.");
+    }
+  }
+  return Array.from(new Set(inferred));
+}
+
 function normalizeProtocol(question: string, protocol: EvidenceEngineProtocolResponse): EvidenceEngineProtocolResponse {
   const pico = { ...protocol.pico };
   const framework = { ...protocol.framework };
@@ -60,6 +103,16 @@ function normalizeProtocol(question: string, protocol: EvidenceEngineProtocolRes
   if (parsedComparator && parsedComparator.toLowerCase() !== "not specified") pico.comparator = parsedComparator;
   pico.outcomes = inferOutcomes(question, pico.outcomes || []);
   if (pico.framework === "PICOT") pico.framework = "PICO";
+  const diseaseClass = detectDiseaseClass(question);
+  const inferredElements = inferProtocolGaps(question, diseaseClass, pico.comparator);
+  pico.disease_class = pico.disease_class || diseaseClass;
+  pico.domain_rule_set = pico.domain_rule_set || domainRuleSet(diseaseClass);
+  pico.inferred_elements = Array.from(new Set([...(pico.inferred_elements || []), ...inferredElements]));
+  pico.picots_complete = pico.inferred_elements.length === 0;
+  pico.human_review_required = true;
+  pico.protocol_warnings = pico.inferred_elements.length
+    ? Array.from(new Set([...(pico.protocol_warnings || []), "PICOTS is incomplete; inferred/missing elements require human expert review before external use."]))
+    : pico.protocol_warnings || [];
 
   if (framework && typeof framework === "object") {
     if ("population" in framework && parsedPopulation) framework.population = parsedPopulation;

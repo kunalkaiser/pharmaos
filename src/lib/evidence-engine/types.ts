@@ -62,6 +62,12 @@ export type EvidenceEngineProtocolResponse = {
     outcomes: string[];
     context: string;
     framework_details?: Record<string, unknown>;
+    disease_class?: string;
+    domain_rule_set?: string;
+    inferred_elements?: string[];
+    picots_complete?: boolean;
+    human_review_required?: boolean;
+    protocol_warnings?: string[];
     notes?: string;
   };
   framework: Record<string, unknown>;

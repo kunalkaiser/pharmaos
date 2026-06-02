@@ -50,6 +50,11 @@ type ProtocolResponse = {
       comparator: string;
       outcomes: string[];
       context: string;
+      disease_class?: string;
+      domain_rule_set?: string;
+      inferred_elements?: string[];
+      picots_complete?: boolean;
+      protocol_warnings?: string[];
     };
   };
   error?: string;
@@ -331,6 +336,12 @@ export function EvidenceEngineConsole() {
   const [outcomesText, setOutcomesText] = useState("randomized trials, adverse events, EASI response, itch reduction, discontinuation");
   const [timeframe, setTimeframe] = useState(starterTimeframe);
   const [context, setContext] = useState("");
+  const [protocolMeta, setProtocolMeta] = useState<{
+    diseaseClass: string;
+    domainRuleSet: string;
+    inferredElements: string[];
+    picotsComplete: boolean | null;
+  }>({ diseaseClass: "", domainRuleSet: "", inferredElements: [], picotsComplete: null });
   const [protocolLoading, setProtocolLoading] = useState(false);
   const [protocolStatus, setProtocolStatus] = useState("Protocol fields can be edited before running.");
   const [maxResults, setMaxResults] = useState(10);
@@ -471,6 +482,12 @@ export function EvidenceEngineConsole() {
       if (pico.comparator && pico.comparator !== "not specified") setComparator(pico.comparator);
       if (pico.outcomes?.length) setOutcomesText(pico.outcomes.join(", "));
       if (pico.context) setContext(pico.context);
+      setProtocolMeta({
+        diseaseClass: pico.disease_class ?? "",
+        domainRuleSet: pico.domain_rule_set ?? "",
+        inferredElements: pico.inferred_elements ?? [],
+        picotsComplete: typeof pico.picots_complete === "boolean" ? pico.picots_complete : null,
+      });
       setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
     } catch (error) {
       setProtocolStatus(error instanceof Error ? error.message : "Protocol auto-fill failed.");
@@ -486,6 +503,7 @@ export function EvidenceEngineConsole() {
     const outcomes = splitOutcomes(outcomesText);
     const requestedLiveSearch = overrides.live_search ?? liveSearch;
     const requestedMaxResults = overrides.max_results ?? maxResults;
+    const effectiveTimeframe = inferTimeframeFromQuestion(question) || timeframe;
     try {
       const response = await fetch("/api/internal/evidence-engine/run", {
         method: "POST",
@@ -505,7 +523,7 @@ export function EvidenceEngineConsole() {
           intervention_or_exposure: interventionOrExposure,
           comparator,
           outcomes,
-          timeframe,
+          timeframe: effectiveTimeframe,
           context,
           max_results: requestedMaxResults,
           live_search: requestedLiveSearch,
@@ -610,6 +628,7 @@ export function EvidenceEngineConsole() {
   }
 
   function createTrackedRun() {
+    const effectiveTimeframe = inferTimeframeFromQuestion(question) || timeframe;
     return runSourceMethod("create_run", {
       question,
       kind: runKind,
@@ -622,7 +641,7 @@ export function EvidenceEngineConsole() {
         intervention_or_exposure: interventionOrExposure,
         comparator,
         outcomes: splitOutcomes(outcomesText),
-        timeframe,
+        timeframe: effectiveTimeframe,
         context,
       },
     });
@@ -804,7 +823,11 @@ export function EvidenceEngineConsole() {
               <span className="text-sm font-semibold text-slate-800">Biomedical question</span>
               <textarea
                 value={question}
-                onChange={(event) => setQuestion(event.target.value)}
+                onChange={(event) => {
+                  const nextQuestion = event.target.value;
+                  setQuestion(nextQuestion);
+                  setTimeframe(inferTimeframeFromQuestion(nextQuestion));
+                }}
                 rows={5}
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
               />
@@ -851,6 +874,34 @@ export function EvidenceEngineConsole() {
                   />
                 </label>
               </div>
+              {(protocolMeta.diseaseClass || protocolMeta.domainRuleSet || protocolMeta.inferredElements.length > 0) && (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <div className="flex flex-wrap gap-2">
+                    {protocolMeta.diseaseClass && (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                        {protocolMeta.diseaseClass.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    {protocolMeta.domainRuleSet && (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                        {protocolMeta.domainRuleSet}
+                      </span>
+                    )}
+                    {protocolMeta.picotsComplete === false && (
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                        PICOTS incomplete
+                      </span>
+                    )}
+                  </div>
+                  {protocolMeta.inferredElements.length > 0 && (
+                    <ul className="mt-3 list-disc space-y-1 pl-5 text-xs leading-5">
+                      {protocolMeta.inferredElements.slice(0, 6).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
