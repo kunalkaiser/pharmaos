@@ -9,6 +9,8 @@ import type {
   EvidenceEngineExportResponse,
   EvidenceEnginePdfExtractionRequest,
   EvidenceEnginePdfExtractionResponse,
+  EvidenceEngineProtocolRequest,
+  EvidenceEngineProtocolResponse,
   EvidenceEngineRunRequest,
   EvidenceEngineRunResponse,
 } from "./types";
@@ -78,12 +80,32 @@ export async function runEvidenceEngineChain(input: EvidenceEngineRunRequest): P
       question: input.question,
       drug: input.drug ?? "",
       indication: input.indication ?? "",
+      framework: input.framework || null,
+      population: input.population ?? "",
+      intervention_or_exposure: input.intervention_or_exposure ?? "",
+      comparator: input.comparator ?? "",
+      outcomes: input.outcomes ?? [],
+      timeframe: input.timeframe ?? "",
+      context: input.context ?? "",
       max_results: input.max_results ?? 10,
       live_search: input.live_search ?? false,
       records: [],
     }),
   });
   return parseEngineResponse<EvidenceEngineRunResponse>(response);
+}
+
+export async function buildEvidenceEngineProtocol(input: EvidenceEngineProtocolRequest): Promise<EvidenceEngineProtocolResponse> {
+  const response = await fetch(`${engineBaseUrl()}/review/start`, {
+    method: "POST",
+    headers: engineHeaders(),
+    cache: "no-store",
+    body: JSON.stringify({
+      question: input.question,
+      framework: input.framework || null,
+    }),
+  });
+  return parseEngineResponse<EvidenceEngineProtocolResponse>(response);
 }
 
 export async function runEvidenceEnginePdfExtraction(

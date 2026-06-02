@@ -23,6 +23,14 @@ function cleanMaxResults(value: unknown) {
   return Math.min(Math.max(Math.floor(parsed), 1), 50);
 }
 
+function cleanStringArray(value: unknown, maxItems = 20, maxLength = 120) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => cleanString(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
 function isChainId(value: string): value is EvidenceEngineChainId {
   return evidenceEngineChainIds.includes(value as EvidenceEngineChainId);
 }
@@ -39,6 +47,13 @@ export async function POST(request: Request) {
   const question = cleanString(body.question, 1200);
   const drug = cleanString(body.drug, 120);
   const indication = cleanString(body.indication, 180);
+  const framework = cleanString(body.framework, 24);
+  const population = cleanString(body.population, 240);
+  const interventionOrExposure = cleanString(body.intervention_or_exposure, 180);
+  const comparator = cleanString(body.comparator, 180);
+  const outcomes = cleanStringArray(body.outcomes);
+  const timeframe = cleanString(body.timeframe, 120);
+  const context = cleanString(body.context, 220);
   const liveSearch = Boolean(body.live_search);
   const maxResults = cleanMaxResults(body.max_results);
 
@@ -46,11 +61,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unsupported analysis chain." }, { status: 400 });
   }
 
-  if (!question && !(drug && indication)) {
-    return NextResponse.json({ ok: false, error: "Provide a biomedical question or both drug and indication." }, { status: 400 });
+  if (!question && !(drug && indication) && !(population && interventionOrExposure)) {
+    return NextResponse.json({ ok: false, error: "Provide a biomedical question or complete the protocol fields." }, { status: 400 });
   }
 
-  const queryText = question || `${drug} ${indication}`.trim();
+  const queryText = question || [population || indication, interventionOrExposure || drug, comparator, outcomes.join(", ")].filter(Boolean).join(" ");
   const queryRun = await startQueryRun({
     queryText,
     accessContext: "app_workspace",
@@ -66,14 +81,21 @@ export async function POST(request: Request) {
       stepType: "normalize_query",
       completedAt: new Date().toISOString(),
       status: "completed",
-      notes: `Selected chain: ${chainId}; max results: ${maxResults}; live search: ${liveSearch}`,
+      notes: `Selected chain: ${chainId}; framework: ${framework || "auto"}; max results: ${maxResults}; live search: ${liveSearch}`,
     });
 
     const result = await runEvidenceEngineChain({
       chain_id: chainId,
       question,
-      drug,
-      indication,
+      drug: drug || interventionOrExposure,
+      indication: indication || population,
+      framework,
+      population,
+      intervention_or_exposure: interventionOrExposure,
+      comparator,
+      outcomes,
+      timeframe,
+      context,
       max_results: maxResults,
       live_search: liveSearch,
     });
@@ -127,6 +149,7 @@ export async function POST(request: Request) {
             endpointCalled: "/analysis/run",
             requestParamsRedacted: {
               chain_id: chainId,
+              framework: framework || "auto",
               live_search: liveSearch,
               max_results: maxResults,
             },

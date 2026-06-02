@@ -39,6 +39,22 @@ type RunResponse = {
   error?: string;
 };
 
+type ProtocolResponse = {
+  ok: boolean;
+  engineConnected: boolean;
+  protocol?: {
+    pico: {
+      framework: string;
+      population: string;
+      intervention_or_exposure: string;
+      comparator: string;
+      outcomes: string[];
+      context: string;
+    };
+  };
+  error?: string;
+};
+
 type PdfExtractionResponse = {
   ok: boolean;
   engineConnected: boolean;
@@ -104,6 +120,8 @@ const fallbackChains: Chain[] = [
 
 const starterQuestion =
   "Compare safety and efficacy evidence for dupilumab versus placebo in adults with moderate-to-severe atopic dermatitis, focusing on randomized trials, adverse events, EASI response, itch reduction, and discontinuation.";
+
+const frameworkOptions = ["Auto", "PICO", "PECO", "PICOC", "CoCoPop", "SPICE", "ECLIPSE"] as const;
 
 function safeJson(value: unknown) {
   return JSON.stringify(value, null, 2);
@@ -284,6 +302,15 @@ export function EvidenceEngineConsole() {
   const [question, setQuestion] = useState(starterQuestion);
   const [drug, setDrug] = useState("dupilumab");
   const [indication, setIndication] = useState("moderate-to-severe atopic dermatitis");
+  const [framework, setFramework] = useState<(typeof frameworkOptions)[number]>("Auto");
+  const [population, setPopulation] = useState("adults with moderate-to-severe atopic dermatitis");
+  const [interventionOrExposure, setInterventionOrExposure] = useState("dupilumab");
+  const [comparator, setComparator] = useState("placebo");
+  const [outcomesText, setOutcomesText] = useState("randomized trials, adverse events, EASI response, itch reduction, discontinuation");
+  const [timeframe, setTimeframe] = useState("week 16 and longer-term follow-up where available");
+  const [context, setContext] = useState("");
+  const [protocolLoading, setProtocolLoading] = useState(false);
+  const [protocolStatus, setProtocolStatus] = useState("Protocol fields can be edited before running.");
   const [maxResults, setMaxResults] = useState(10);
   const [liveSearch, setLiveSearch] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -316,10 +343,20 @@ export function EvidenceEngineConsole() {
     const requestedQuestion = params.get("question") ?? "";
     const requestedDrug = params.get("drug") ?? "";
     const requestedIndication = params.get("indication") ?? "";
+    const requestedFramework = params.get("framework") ?? "";
     if (requestedChain) setSelectedChainId(requestedChain);
     if (requestedQuestion) setQuestion(requestedQuestion);
-    if (requestedDrug) setDrug(requestedDrug);
-    if (requestedIndication) setIndication(requestedIndication);
+    if (requestedDrug) {
+      setDrug(requestedDrug);
+      setInterventionOrExposure(requestedDrug);
+    }
+    if (requestedIndication) {
+      setIndication(requestedIndication);
+      setPopulation(requestedIndication);
+    }
+    if (frameworkOptions.includes(requestedFramework as (typeof frameworkOptions)[number])) {
+      setFramework(requestedFramework as (typeof frameworkOptions)[number]);
+    }
     if (!accessToken && !document.cookie.includes("evidara_internal_access=")) {
       const previewUrl = new URL("/api/preview-access", window.location.origin);
       previewUrl.searchParams.set("token", "evidaraos-preview-access");
@@ -327,6 +364,7 @@ export function EvidenceEngineConsole() {
       if (requestedQuestion) previewUrl.searchParams.set("question", requestedQuestion);
       if (requestedDrug) previewUrl.searchParams.set("drug", requestedDrug);
       if (requestedIndication) previewUrl.searchParams.set("indication", requestedIndication);
+      if (requestedFramework) previewUrl.searchParams.set("framework", requestedFramework);
       window.location.replace(previewUrl.toString());
       return () => {
         cancelled = true;
@@ -367,10 +405,56 @@ export function EvidenceEngineConsole() {
   const manualPdfCount = countHydrationStatus(runResponse?.result?.artifacts, "Requires_Manual_PDF_Ingestion");
   const figures = chartEntries(runResponse?.result?.artifacts);
 
+  async function autofillProtocol() {
+    setProtocolLoading(true);
+    setProtocolStatus("Reading the question and drafting protocol fields...");
+    try {
+      const response = await fetch("/api/internal/evidence-engine/protocol", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(new URLSearchParams(window.location.search).get("access_token")
+            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
+            : {}),
+        },
+        body: JSON.stringify({
+          question,
+          framework: framework === "Auto" ? "" : framework,
+        }),
+      });
+      const payload = (await response.json()) as ProtocolResponse;
+      if (!payload.ok || !payload.protocol) {
+        throw new Error(payload.error ?? "Protocol auto-fill failed.");
+      }
+      const pico = payload.protocol.pico;
+      const detectedFramework = frameworkOptions.includes(pico.framework as (typeof frameworkOptions)[number])
+        ? (pico.framework as (typeof frameworkOptions)[number])
+        : "Auto";
+      setFramework(detectedFramework);
+      if (pico.population) {
+        setPopulation(pico.population);
+        setIndication(pico.population);
+      }
+      if (pico.intervention_or_exposure) {
+        setInterventionOrExposure(pico.intervention_or_exposure);
+        setDrug(pico.intervention_or_exposure);
+      }
+      if (pico.comparator && pico.comparator !== "not specified") setComparator(pico.comparator);
+      if (pico.outcomes?.length) setOutcomesText(pico.outcomes.join(", "));
+      if (pico.context) setContext(pico.context);
+      setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
+    } catch (error) {
+      setProtocolStatus(error instanceof Error ? error.message : "Protocol auto-fill failed.");
+    } finally {
+      setProtocolLoading(false);
+    }
+  }
+
   async function runSelectedChain() {
     setLoading(true);
     setRunResponse(null);
     setOutputTab("summary");
+    const outcomes = splitOutcomes(outcomesText);
     try {
       const response = await fetch("/api/internal/evidence-engine/run", {
         method: "POST",
@@ -383,8 +467,15 @@ export function EvidenceEngineConsole() {
         body: JSON.stringify({
           chain_id: selectedChain.id,
           question,
-          drug,
-          indication,
+          drug: drug || interventionOrExposure,
+          indication: indication || population,
+          framework: framework === "Auto" ? "" : framework,
+          population,
+          intervention_or_exposure: interventionOrExposure,
+          comparator,
+          outcomes,
+          timeframe,
+          context,
           max_results: maxResults,
           live_search: liveSearch,
         }),
@@ -423,10 +514,10 @@ export function EvidenceEngineConsole() {
           filename: pdfFile?.name ?? "",
           source_text: pdfSourceText,
           pdf_base64: pdfBase64,
-          population: indication,
-          intervention_or_exposure: drug,
-          comparator: question.toLowerCase().includes("placebo") ? "placebo" : "",
-          outcomes: splitOutcomes("overall survival, progression-free survival, EASI response, itch reduction, adverse events, treatment discontinuation"),
+          population,
+          intervention_or_exposure: interventionOrExposure,
+          comparator,
+          outcomes: splitOutcomes(outcomesText),
         }),
       });
       const payload = (await response.json()) as PdfExtractionResponse;
@@ -580,24 +671,104 @@ export function EvidenceEngineConsole() {
               />
             </label>
 
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Protocol builder</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{protocolStatus}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={autofillProtocol}
+                  disabled={protocolLoading || !question.trim()}
+                  className="rounded-full border border-teal-700 bg-white px-4 py-2 text-xs font-semibold text-teal-800 transition hover:bg-teal-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+                >
+                  {protocolLoading ? "Auto-filling..." : "Auto-fill from question"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">Framework</span>
+                  <select
+                    value={framework}
+                    onChange={(event) => setFramework(event.target.value as (typeof frameworkOptions)[number])}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                  >
+                    {frameworkOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">Timeframe</span>
+                  <input
+                    value={timeframe}
+                    onChange={(event) => setTimeframe(event.target.value)}
+                    placeholder="week 16, 52 weeks, long-term follow-up"
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                  />
+                </label>
+              </div>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Drug or intervention</span>
+                <span className="text-sm font-semibold text-slate-800">Population</span>
                 <input
-                  value={drug}
-                  onChange={(event) => setDrug(event.target.value)}
+                  value={population}
+                  onChange={(event) => {
+                    setPopulation(event.target.value);
+                    setIndication(event.target.value);
+                  }}
+                  placeholder="adults with moderate-to-severe atopic dermatitis"
                   className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Indication</span>
+                <span className="text-sm font-semibold text-slate-800">Intervention / Exposure</span>
                 <input
-                  value={indication}
-                  onChange={(event) => setIndication(event.target.value)}
+                  value={interventionOrExposure}
+                  onChange={(event) => {
+                    setInterventionOrExposure(event.target.value);
+                    setDrug(event.target.value);
+                  }}
+                  placeholder="drug, regimen, exposure, service, condition"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-800">Comparator</span>
+                <input
+                  value={comparator}
+                  onChange={(event) => setComparator(event.target.value)}
+                  placeholder="placebo, standard care, unexposed, not specified"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-800">Context</span>
+                <input
+                  value={context}
+                  onChange={(event) => setContext(event.target.value)}
+                  placeholder="setting, geography, line of therapy, health system"
                   className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
                 />
               </label>
             </div>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-800">Outcomes</span>
+              <textarea
+                value={outcomesText}
+                onChange={(event) => setOutcomesText(event.target.value)}
+                rows={3}
+                placeholder="overall survival, PFS, adverse events, discontinuation, EASI response"
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+              />
+            </label>
 
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <label className="flex items-center gap-3 text-sm font-medium text-slate-700">

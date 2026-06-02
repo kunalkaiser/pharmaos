@@ -29,6 +29,13 @@ export type EvidenceEngineRunRequest = {
   question: string;
   drug?: string;
   indication?: string;
+  framework?: string;
+  population?: string;
+  intervention_or_exposure?: string;
+  comparator?: string;
+  outcomes?: string[];
+  timeframe?: string;
+  context?: string;
   max_results?: number;
   live_search?: boolean;
 };
@@ -38,6 +45,28 @@ export type EvidenceEngineRunResponse = {
   status: string;
   artifacts: Record<string, unknown>;
   limitations: string[];
+};
+
+export type EvidenceEngineProtocolRequest = {
+  question: string;
+  framework?: string;
+};
+
+export type EvidenceEngineProtocolResponse = {
+  pico: {
+    question: string;
+    framework: string;
+    population: string;
+    intervention_or_exposure: string;
+    comparator: string;
+    outcomes: string[];
+    context: string;
+    framework_details?: Record<string, unknown>;
+    notes?: string;
+  };
+  framework: Record<string, unknown>;
+  inclusion_criteria: string[];
+  exclusion_criteria: string[];
 };
 
 export type EvidenceEnginePdfExtractionRequest = {
