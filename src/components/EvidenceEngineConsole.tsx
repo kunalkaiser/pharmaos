@@ -464,11 +464,13 @@ export function EvidenceEngineConsole() {
     }
   }
 
-  async function runSelectedChain() {
+  async function runSelectedChain(overrides: { live_search?: boolean; max_results?: number } = {}) {
     setLoading(true);
     setRunResponse(null);
     setOutputTab("summary");
     const outcomes = splitOutcomes(outcomesText);
+    const requestedLiveSearch = overrides.live_search ?? liveSearch;
+    const requestedMaxResults = overrides.max_results ?? maxResults;
     try {
       const response = await fetch("/api/internal/evidence-engine/run", {
         method: "POST",
@@ -490,17 +492,23 @@ export function EvidenceEngineConsole() {
           outcomes,
           timeframe,
           context,
-          max_results: maxResults,
-          live_search: liveSearch,
+          max_results: requestedMaxResults,
+          live_search: requestedLiveSearch,
         }),
       });
       const payload = (await response.json()) as RunResponse;
+      if (!response.ok && !payload.error) {
+        payload.error = `Workflow request failed with HTTP ${response.status}. Try a smaller max-results value or turn off live retrieval.`;
+      }
       setRunResponse(payload);
     } catch (error) {
       setRunResponse({
         ok: false,
         engineConnected: false,
-        error: error instanceof Error ? error.message : "Run failed.",
+        error:
+          error instanceof Error
+            ? `${error.message}. Try turning off live retrieval or lowering max results for a fast first pass.`
+            : "Run failed. Try turning off live retrieval or lowering max results for a fast first pass.",
       });
     } finally {
       setLoading(false);
@@ -891,7 +899,11 @@ export function EvidenceEngineConsole() {
                 <input
                   type="checkbox"
                   checked={liveSearch}
-                  onChange={(event) => setLiveSearch(event.target.checked)}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setLiveSearch(checked);
+                    if (checked && maxResults > 20) setMaxResults(20);
+                  }}
                   className="h-4 w-4 rounded border-slate-300 text-teal-700"
                 />
                 Run live public-source retrieval where supported
@@ -903,15 +915,20 @@ export function EvidenceEngineConsole() {
                   min={1}
                   max={50}
                   value={maxResults}
-                  onChange={(event) => setMaxResults(Number(event.target.value))}
+                  onChange={(event) => setMaxResults(Math.min(Math.max(Number(event.target.value) || 10, 1), 50))}
                   className="w-20 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-teal-600"
                 />
               </label>
             </div>
+            {liveSearch ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                Live retrieval calls public sources and can take longer on large runs. For first-pass SLR onboarding, use 10-20 records, then expand after the workflow succeeds.
+              </p>
+            ) : null}
 
             <button
               type="button"
-              onClick={runSelectedChain}
+              onClick={() => runSelectedChain()}
               disabled={loading}
               className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
@@ -937,6 +954,21 @@ export function EvidenceEngineConsole() {
           </div>
 
           {runResponse.error ? <p className="mt-4 rounded-2xl bg-red-50 p-4 text-sm text-red-800">{runResponse.error}</p> : null}
+          {!runResponse.ok ? (
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm leading-6 text-amber-950">
+                Recovery path: run a fast SLR scaffold without live retrieval first, then expand sources after the protocol and report shell are created.
+              </p>
+              <button
+                type="button"
+                onClick={() => runSelectedChain({ live_search: false, max_results: Math.min(maxResults, 10) })}
+                disabled={loading}
+                className="shrink-0 rounded-full bg-amber-900 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-800 disabled:bg-amber-300"
+              >
+                Retry fast scan
+              </button>
+            </div>
+          ) : null}
 
           {runResponse.result ? (
             <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.7fr]">
