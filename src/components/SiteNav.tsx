@@ -5,7 +5,7 @@ const workspacePreviewHref = "/api/preview-access?token=evidaraos-preview-access
 const links = [
   { href: "/", label: "Start" },
   { href: workspacePreviewHref, label: "Run Analysis" },
-  { href: "/query-journey", label: "How It Works" },
+  { href: "/query-journey", label: "How it works" },
   { href: "/architecture", label: "Status" },
   { href: "/security-trust", label: "Trust" },
 ];
@@ -18,18 +18,18 @@ export function SiteNav() {
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white">EO</span>
           <span className="text-base font-semibold tracking-tight">EvidaraOS</span>
         </Link>
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="hidden flex-wrap items-center gap-1 md:flex">
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950">
+            <Link key={`${link.label}-${link.href}`} href={link.href} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950">
               {link.label}
             </Link>
           ))}
         </div>
-        <Link href={workspacePreviewHref} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50">
-          Upload Paper
+        <Link href="/demo" className="hidden rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 sm:inline-flex">
+          Request demo
         </Link>
-        <Link href="/demo" className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
-          Request Demo
+        <Link href={workspacePreviewHref} className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800">
+          Start run
         </Link>
       </nav>
     </header>

@@ -5,16 +5,16 @@ const groups = [
     title: "Start",
     links: [
       ["Run Analysis", "/api/preview-access?token=evidaraos-preview-access"],
-      ["Upload a Paper", "/api/preview-access?token=evidaraos-preview-access"],
-      ["Request Demo", "/demo"],
+      ["Request demo", "/demo"],
+      ["How it works", "/query-journey"],
     ],
   },
   {
-    title: "Showroom",
+    title: "Learn",
     links: [
-      ["How It Works", "/query-journey"],
-      ["Example Workflows", "/solutions"],
+      ["Solutions", "/solutions"],
       ["Resources", "/resources"],
+      ["Company", "/company"],
     ],
   },
   {
@@ -49,7 +49,7 @@ export function SiteFooter() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-200">{group.title}</p>
               <div className="mt-3 space-y-2">
                 {group.links.map(([label, href]) => (
-                  <Link key={href} href={href} className="block text-sm text-slate-300 hover:text-white">
+                  <Link key={`${group.title}-${label}-${href}`} href={href} className="block text-sm text-slate-300 hover:text-white">
                     {label}
                   </Link>
                 ))}
