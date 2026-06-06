@@ -60,6 +60,7 @@ export type EvidenceEngineProtocolResponse = {
     intervention_or_exposure: string;
     comparator: string;
     outcomes: string[];
+    timeframe?: string;
     context: string;
     framework_details?: Record<string, unknown>;
     disease_class?: string;
@@ -71,11 +72,31 @@ export type EvidenceEngineProtocolResponse = {
     picots_complete?: boolean;
     human_review_required?: boolean;
     protocol_warnings?: string[];
+    review_type_recommendation?: ReviewTypeRecommendation;
+    review_type?: string;
+    review_type_confidence?: number;
+    recommended_review_framework?: string;
+    reporting_guideline?: string;
     notes?: string;
   };
   framework: Record<string, unknown>;
+  review_type_recommendation?: ReviewTypeRecommendation;
   inclusion_criteria: string[];
   exclusion_criteria: string[];
+};
+
+export type ReviewTypeRecommendation = {
+  review_type: string;
+  label: string;
+  confidence: number;
+  rationale: string;
+  recommended_framework: string;
+  reporting_guideline: string;
+  appraisal_tools: string[];
+  method_requirements: string[];
+  expected_outputs: string[];
+  evidence_handling: string;
+  warnings: string[];
 };
 
 export type EvidenceEnginePdfExtractionRequest = {

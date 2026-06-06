@@ -49,6 +49,7 @@ type ProtocolResponse = {
       intervention_or_exposure: string;
       comparator: string;
       outcomes: string[];
+      timeframe?: string;
       context: string;
       disease_class?: string;
       domain_rule_set?: string;
@@ -58,9 +59,29 @@ type ProtocolResponse = {
       inference_records?: Array<Record<string, string>>;
       picots_complete?: boolean;
       protocol_warnings?: string[];
+      review_type_recommendation?: ReviewTypeRecommendation;
+      review_type?: string;
+      review_type_confidence?: number;
+      recommended_review_framework?: string;
+      reporting_guideline?: string;
     };
+    review_type_recommendation?: ReviewTypeRecommendation;
   };
   error?: string;
+};
+
+type ReviewTypeRecommendation = {
+  review_type: string;
+  label: string;
+  confidence: number;
+  rationale: string;
+  recommended_framework: string;
+  reporting_guideline: string;
+  appraisal_tools: string[];
+  method_requirements: string[];
+  expected_outputs: string[];
+  evidence_handling: string;
+  warnings: string[];
 };
 
 type PdfExtractionResponse = {
@@ -113,6 +134,17 @@ type DocumentChatResponse = {
   error?: string;
 };
 
+type ChatScope = "report" | "sources" | "upload";
+
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  scope: ChatScope;
+  response?: DocumentChatResponse;
+  error?: string;
+};
+
 type SourceMethodResponse = {
   ok: boolean;
   engineConnected: boolean;
@@ -137,7 +169,24 @@ const fallbackChains: Chain[] = [
 const starterQuestion =
   "Compare safety and efficacy evidence for dupilumab versus placebo in adults with moderate-to-severe atopic dermatitis, focusing on randomized trials, adverse events, EASI response, itch reduction, and discontinuation.";
 
-const frameworkOptions = ["Auto", "PICO", "PECO", "PICOC", "CoCoPop", "SPICE", "ECLIPSE"] as const;
+const frameworkOptions = [
+  "Auto",
+  "PICO",
+  "PECO",
+  "PICOC",
+  "CoCoPop",
+  "SPICE",
+  "ECLIPSE",
+  "PCC",
+  "PEO",
+  "PIRT",
+  "PICo",
+  "SPIDER",
+  "CMO",
+  "SALSA",
+  "Bibliometric",
+  "Mapping",
+] as const;
 const sourceMethodTabs = ["universal", "hydrate", "safety", "trials", "labels", "runs"] as const;
 
 function safeJson(value: unknown) {
@@ -165,11 +214,71 @@ function getReportMarkdown(artifacts: Record<string, unknown> | undefined) {
   return typeof value === "string" ? value : "";
 }
 
+function buildReportChatText(markdown: string, artifacts: Record<string, unknown> | undefined) {
+  const synthesis = getQuantitativeSynthesis(artifacts);
+  const sourceCount = getSourceInventory(artifacts).length;
+  const quantSummary = Object.keys(synthesis).length ? `\n\nQuantitative synthesis artifact:\n${safeJson(synthesis).slice(0, 50_000)}` : "";
+  return [
+    "EvidaraOS generated SLR report. Candidate-only; human verification required.",
+    `Source records represented: ${sourceCount}`,
+    markdown,
+    quantSummary,
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 280_000);
+}
+
+function buildSourcesChatText(artifacts: Record<string, unknown> | undefined) {
+  const records = getSourceInventory(artifacts);
+  if (!records.length) return "";
+  return records
+    .slice(0, 120)
+    .map((record, index) => {
+      const enrichment = isRecord(record.enrichment) ? record.enrichment : {};
+      const signals = isRecord(enrichment.full_text_extracted_signals) ? enrichment.full_text_extracted_signals : {};
+      const fullTextSections = isRecord(enrichment.full_text_sections) ? enrichment.full_text_sections : {};
+      const sectionText = Object.entries(fullTextSections)
+        .flatMap(([section, value]) => (typeof value === "string" ? [`${section}: ${value.slice(0, 2500)}`] : []))
+        .join("\n");
+      return [
+        `SOURCE ${index + 1}`,
+        `Title: ${sourceTitle(record)}`,
+        `Provider: ${sourceProvider(record)}`,
+        `Year: ${textValue(record, ["year", "publication_date"]) || "not available"}`,
+        `DOI: ${textValue(record, ["doi", "DOI"]) || "not available"}`,
+        `PMID: ${textValue(record, ["pmid", "PMID"]) || "not available"}`,
+        `URL: ${sourceUrl(record) || "not available"}`,
+        `Screening/status: ${textValue(record, ["screening_disposition", "disposition"]) || textValue(enrichment, ["screening_disposition", "full_text_hydration_status", "hydration_status"]) || "candidate"}`,
+        `Study design: ${textValue(enrichment, ["study_design_label"]) || "not classified"}`,
+        `Abstract/source overview: ${textValue(record, ["abstract", "summary", "sourceOverview"]).slice(0, 3500) || "not available"}`,
+        sectionText ? `Full-text sections/snippets:\n${sectionText}` : "",
+        Object.keys(signals).length ? `Extracted deterministic signals:\n${safeJson(signals).slice(0, 7000)}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n---\n\n")
+    .slice(0, 280_000);
+}
+
 function countHydrationStatus(artifacts: Record<string, unknown> | undefined, status: string) {
   return getSourceInventory(artifacts).filter((record) => {
     const enrichment = isRecord(record.enrichment) ? record.enrichment : record;
     return enrichment.full_text_hydration_status === status || enrichment.hydration_status === status;
   }).length;
+}
+
+function needsFullTextTriage(record: Record<string, unknown>) {
+  const enrichment = isRecord(record.enrichment) ? record.enrichment : record;
+  const fullTextStatus = textValue(enrichment, ["full_text_hydration_status"]);
+  const hydrationStatus = textValue(enrichment, ["hydration_status"]);
+  if (fullTextStatus === "full_text_recovered" || hydrationStatus === "full_text_recovered") return false;
+  return Boolean(textValue(record, ["doi", "pmid", "url", "sourceUrl", "source_url"]) || fullTextStatus === "Requires_Manual_PDF_Ingestion");
+}
+
+function countNeedsFullTextTriage(artifacts: Record<string, unknown> | undefined) {
+  return getSourceInventory(artifacts).filter(needsFullTextTriage).length;
 }
 
 function textValue(record: Record<string, unknown>, keys: string[]) {
@@ -212,10 +321,11 @@ function hydrationDetails(record: Record<string, unknown>) {
   const fullTextSource = textValue(enrichment, ["full_text_source"]);
   const unpaywallPdfUrl = nestedText(enrichment, ["full_text_extracted_signals", "unpaywall", "pdf_url"]);
   const manualReason = nestedText(enrichment, ["manual_queue", "reason"]);
-  const status = fullTextStatus || hydrationStatus || "metadata_only";
+  const status = fullTextStatus || hydrationStatus || (needsFullTextTriage(record) ? "needs_full_text_triage" : "metadata_only");
   const labelMap: Record<string, string> = {
     full_text_recovered: "Open-access full text recovered",
     Requires_Manual_PDF_Ingestion: "Manual PDF required",
+    needs_full_text_triage: "Needs full-text triage",
     abstract_recovered_from_pubmed: "PubMed abstract recovered",
     no_pubmed_abstract_found: "No PubMed abstract found",
     abstract_unavailable: "Abstract unavailable",
@@ -226,7 +336,7 @@ function hydrationDetails(record: Record<string, unknown>) {
   const tone =
     status === "full_text_recovered"
       ? "border-teal-200 bg-teal-50 text-teal-900"
-      : status === "Requires_Manual_PDF_Ingestion" || status === "failed" || status === "abstract_unavailable"
+      : status === "Requires_Manual_PDF_Ingestion" || status === "needs_full_text_triage" || status === "failed" || status === "abstract_unavailable"
         ? "border-amber-200 bg-amber-50 text-amber-900"
         : "border-slate-200 bg-slate-50 text-slate-700";
   return {
@@ -373,6 +483,44 @@ function inferTimeframeFromQuestion(value: string) {
 
 const starterTimeframe = inferTimeframeFromQuestion(starterQuestion);
 
+function protocolFieldLabels(framework: string) {
+  const labels: Record<string, { population: string; intervention: string; comparator: string; context: string; outcomes: string }> = {
+    PCC: { population: "Population / Participants", intervention: "Concept", comparator: "Comparator", context: "Context", outcomes: "Charting outputs" },
+    PEO: { population: "Population", intervention: "Exposure", comparator: "Comparator", context: "Context", outcomes: "Outcomes" },
+    PIRT: { population: "Population", intervention: "Index test", comparator: "Reference standard", context: "Target condition", outcomes: "Accuracy outcomes" },
+    PICo: { population: "Population", intervention: "Phenomenon of interest", comparator: "Comparator", context: "Context", outcomes: "Themes / findings" },
+    SPIDER: { population: "Sample", intervention: "Phenomenon of interest", comparator: "Design / comparison", context: "Research type / context", outcomes: "Evaluation" },
+    CMO: { population: "Context", intervention: "Mechanism", comparator: "Comparator", context: "Setting / programme", outcomes: "Outcomes" },
+    SALSA: { population: "Search scope", intervention: "Synthesis focus", comparator: "Comparator", context: "Analysis focus", outcomes: "Narrative outputs" },
+    Bibliometric: { population: "Topic domain", intervention: "Bibliometric topic", comparator: "Comparator", context: "Database scope", outcomes: "Metadata analyses" },
+    Mapping: { population: "Population / domain", intervention: "Map topic", comparator: "Comparator", context: "Classification context", outcomes: "Mapping axes" },
+    CoCoPop: { population: "Population", intervention: "Condition", comparator: "Comparator", context: "Context", outcomes: "Frequency outcomes" },
+    SPICE: { population: "Perspective", intervention: "Intervention", comparator: "Comparison", context: "Setting", outcomes: "Evaluation" },
+    ECLIPSE: { population: "Client group", intervention: "Expectation / service", comparator: "Comparator", context: "Location", outcomes: "Impact" },
+  };
+  return labels[framework] ?? { population: "Population", intervention: "Intervention / Exposure", comparator: "Comparator", context: "Context", outcomes: "Outcomes" };
+}
+
+function runButtonLabel(chainName: string, recommendation: ReviewTypeRecommendation | null) {
+  if (!recommendation) return `Run ${chainName}`;
+  const map: Record<string, string> = {
+    systematic_review: "Run Systematic Review",
+    scoping_review: "Run Scoping Review",
+    rapid_review: "Run Rapid Review",
+    umbrella_review: "Run Umbrella Review",
+    diagnostic_accuracy_review: "Run Diagnostic Review",
+    qualitative_review: "Run Qualitative Synthesis",
+    realist_review: "Run Realist Review",
+    bibliometric_review: "Run Bibliometric Review",
+    mapping_review: "Run Evidence Map",
+    narrative_review: "Run Narrative Review",
+    integrative_review: "Run Integrative Review",
+    critical_review: "Run Critical Review",
+    state_of_the_art_review: "Run State-of-the-Art Review",
+  };
+  return map[recommendation.review_type] ?? `Run ${recommendation.label}`;
+}
+
 export function EvidenceEngineConsole() {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
@@ -385,6 +533,7 @@ export function EvidenceEngineConsole() {
   const [comparator, setComparator] = useState("placebo");
   const [outcomesText, setOutcomesText] = useState("randomized trials, adverse events, EASI response, itch reduction, discontinuation");
   const [timeframe, setTimeframe] = useState(starterTimeframe);
+  const [timeframeTouched, setTimeframeTouched] = useState(false);
   const [context, setContext] = useState("");
   const [protocolMeta, setProtocolMeta] = useState<{
     diseaseClass: string;
@@ -393,7 +542,16 @@ export function EvidenceEngineConsole() {
     domainRulesApplied: string[];
     diseaseModifiers: string[];
     picotsComplete: boolean | null;
-  }>({ diseaseClass: "", domainRuleSet: "", inferredElements: [], domainRulesApplied: [], diseaseModifiers: [], picotsComplete: null });
+    reviewTypeRecommendation: ReviewTypeRecommendation | null;
+  }>({
+    diseaseClass: "",
+    domainRuleSet: "",
+    inferredElements: [],
+    domainRulesApplied: [],
+    diseaseModifiers: [],
+    picotsComplete: null,
+    reviewTypeRecommendation: null,
+  });
   const [protocolLoading, setProtocolLoading] = useState(false);
   const [protocolStatus, setProtocolStatus] = useState("Protocol fields can be edited before running.");
   const [maxResults, setMaxResults] = useState(10);
@@ -415,8 +573,10 @@ export function EvidenceEngineConsole() {
   const [chatSourceUrl, setChatSourceUrl] = useState("");
   const [chatSourceText, setChatSourceText] = useState("");
   const [chatFile, setChatFile] = useState<File | null>(null);
+  const [chatScope, setChatScope] = useState<ChatScope>("upload");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatResponse, setChatResponse] = useState<DocumentChatResponse | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [exportingFormat, setExportingFormat] = useState<"pdf" | null>(null);
   const [exportError, setExportError] = useState("");
   const [sourceMethodTab, setSourceMethodTab] = useState<(typeof sourceMethodTabs)[number]>("universal");
@@ -487,19 +647,24 @@ export function EvidenceEngineConsole() {
     () => chains.find((chain) => chain.id === selectedChainId) ?? chains[0] ?? fallbackChains[0],
     [chains, selectedChainId]
   );
+  const fieldLabels = useMemo(() => protocolFieldLabels(framework), [framework]);
 
   const reportMarkdown = getReportMarkdown(runResponse?.result?.artifacts);
   const sourceInventory = getSourceInventory(runResponse?.result?.artifacts);
+  const reportChatText = useMemo(() => buildReportChatText(reportMarkdown, runResponse?.result?.artifacts), [reportMarkdown, runResponse?.result?.artifacts]);
+  const sourcesChatText = useMemo(() => buildSourcesChatText(runResponse?.result?.artifacts), [runResponse?.result?.artifacts]);
   const recordCount = sourceInventory.length || getArtifactArray(runResponse?.result?.artifacts, "source_records").length || getArtifactArray(runResponse?.result?.artifacts, "records").length;
   const includedCount = getArtifactArray(runResponse?.result?.artifacts, "extraction").length;
   const fullTextRecoveredCount = countHydrationStatus(runResponse?.result?.artifacts, "full_text_recovered");
-  const manualPdfCount = countHydrationStatus(runResponse?.result?.artifacts, "Requires_Manual_PDF_Ingestion");
+  const needsFullTextCount = countNeedsFullTextTriage(runResponse?.result?.artifacts);
   const figures = chartEntries(runResponse?.result?.artifacts);
+  const pdfLooksLikeGeneratedReport = Boolean(pdfFile?.name && /(?:evidara|slr|report|evidenceos)/i.test(pdfFile.name));
 
   async function autofillProtocol() {
     setProtocolLoading(true);
     setProtocolStatus("Reading the question and drafting protocol fields...");
-    setTimeframe(inferTimeframeFromQuestion(question));
+    const inferredTimeframe = inferTimeframeFromQuestion(question);
+    if (!timeframeTouched) setTimeframe(inferredTimeframe);
     try {
       const response = await fetch("/api/internal/evidence-engine/protocol", {
         method: "POST",
@@ -533,7 +698,9 @@ export function EvidenceEngineConsole() {
       }
       if (pico.comparator && pico.comparator !== "not specified") setComparator(pico.comparator);
       if (pico.outcomes?.length) setOutcomesText(pico.outcomes.join(", "));
+      if (!timeframeTouched) setTimeframe(pico.timeframe || inferredTimeframe);
       if (pico.context) setContext(pico.context);
+      const reviewTypeRecommendation = pico.review_type_recommendation ?? payload.protocol.review_type_recommendation ?? null;
       setProtocolMeta({
         diseaseClass: pico.disease_class ?? "",
         domainRuleSet: pico.domain_rule_set ?? "",
@@ -541,8 +708,13 @@ export function EvidenceEngineConsole() {
         domainRulesApplied: pico.domain_rules_applied ?? [],
         diseaseModifiers: pico.disease_modifiers ?? [],
         picotsComplete: typeof pico.picots_complete === "boolean" ? pico.picots_complete : null,
+        reviewTypeRecommendation,
       });
-      setProtocolStatus(`${pico.framework} protocol drafted. Review and edit before running.`);
+      setProtocolStatus(
+        reviewTypeRecommendation
+          ? `${reviewTypeRecommendation.label} recommended; ${pico.framework} fields drafted. Review and edit before running.`
+          : `${pico.framework} protocol drafted. Review and edit before running.`,
+      );
     } catch (error) {
       setProtocolStatus(error instanceof Error ? error.message : "Protocol auto-fill failed.");
     } finally {
@@ -745,12 +917,31 @@ export function EvidenceEngineConsole() {
     }
   }
 
-  async function runDocumentChat() {
+  async function runDocumentChat(questionOverride?: string) {
+    const askedQuestion = (questionOverride ?? chatQuestion).trim();
+    if (!askedQuestion) return;
     setChatLoading(true);
     setChatResponse(null);
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      text: askedQuestion,
+      scope: chatScope,
+    };
+    setChatMessages((items) => [...items, userMessage]);
     try {
       const fileBase64 = chatFile ? await fileToBase64(chatFile) : "";
       const isDocx = Boolean(chatFile?.name.toLowerCase().endsWith(".docx"));
+      const scopedSourceText = chatScope === "report" ? reportChatText : chatScope === "sources" ? sourcesChatText : chatSourceText;
+      if (chatScope === "upload" && !scopedSourceText.trim() && !fileBase64) {
+        throw new Error("Upload a PDF/DOCX or paste document text before chatting.");
+      }
+      const scopedTitle =
+        chatScope === "report"
+          ? `${selectedChain.name} generated SLR report`
+          : chatScope === "sources"
+            ? `${selectedChain.name} retrieved source set`
+            : chatTitle;
       const response = await fetch("/api/internal/evidence-engine/document-chat", {
         method: "POST",
         headers: {
@@ -760,24 +951,49 @@ export function EvidenceEngineConsole() {
             : {}),
         },
         body: JSON.stringify({
-          question: chatQuestion,
-          title: chatTitle,
-          doi: chatDoi,
-          source_url: chatSourceUrl,
-          filename: chatFile?.name ?? "",
-          source_text: chatSourceText,
-          pdf_base64: chatFile && !isDocx ? fileBase64 : "",
-          docx_base64: chatFile && isDocx ? fileBase64 : "",
+          question: askedQuestion,
+          title: scopedTitle,
+          doi: chatScope === "upload" ? chatDoi : "",
+          source_url: chatScope === "upload" ? chatSourceUrl : "",
+          filename: chatScope === "upload" ? chatFile?.name ?? "" : "",
+          source_text: scopedSourceText,
+          pdf_base64: chatScope === "upload" && chatFile && !isDocx ? fileBase64 : "",
+          docx_base64: chatScope === "upload" && chatFile && isDocx ? fileBase64 : "",
+          scope: chatScope,
         }),
       });
       const payload = (await response.json()) as DocumentChatResponse;
       setChatResponse(payload);
+      setChatMessages((items) => [
+        ...items,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: payload.chat?.answer || payload.error || "No answer returned.",
+          scope: chatScope,
+          response: payload,
+          error: payload.error,
+        },
+      ]);
+      setChatQuestion("");
     } catch (error) {
-      setChatResponse({
+      const message = error instanceof Error ? error.message : "Document chat failed.";
+      const failedResponse = {
         ok: false,
         engineConnected: false,
-        error: error instanceof Error ? error.message : "Document chat failed.",
-      });
+        error: message,
+      };
+      setChatResponse(failedResponse);
+      setChatMessages((items) => [
+        ...items,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          text: message,
+          scope: chatScope,
+          error: message,
+        },
+      ]);
     } finally {
       setChatLoading(false);
     }
@@ -880,7 +1096,8 @@ export function EvidenceEngineConsole() {
                 onChange={(event) => {
                   const nextQuestion = event.target.value;
                   setQuestion(nextQuestion);
-                  setTimeframe(inferTimeframeFromQuestion(nextQuestion));
+                  const inferredTimeframe = inferTimeframeFromQuestion(nextQuestion);
+                  if (!timeframeTouched) setTimeframe(inferredTimeframe);
                 }}
                 rows={5}
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
@@ -903,6 +1120,46 @@ export function EvidenceEngineConsole() {
                 </button>
               </div>
 
+              {protocolMeta.reviewTypeRecommendation && (
+                <div className="mt-4 rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-teal-700">Recommended review design</p>
+                      <h4 className="mt-1 text-base font-semibold text-slate-950">{protocolMeta.reviewTypeRecommendation.label}</h4>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">{protocolMeta.reviewTypeRecommendation.rationale}</p>
+                    </div>
+                    <div className="shrink-0 rounded-2xl bg-teal-50 px-4 py-3 text-sm font-semibold text-teal-900">
+                      {Math.round(protocolMeta.reviewTypeRecommendation.confidence * 100)}% match
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Framework</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">{protocolMeta.reviewTypeRecommendation.recommended_framework}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Reporting</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">{protocolMeta.reviewTypeRecommendation.reporting_guideline}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Expected output</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {protocolMeta.reviewTypeRecommendation.expected_outputs.slice(0, 3).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                  {protocolMeta.reviewTypeRecommendation.method_requirements.length > 0 && (
+                    <ul className="mt-3 grid gap-2 text-xs leading-5 text-slate-700 md:grid-cols-2">
+                      {protocolMeta.reviewTypeRecommendation.method_requirements.slice(0, 4).map((item) => (
+                        <li key={item} className="rounded-xl bg-slate-50 px-3 py-2">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-800">Framework</span>
@@ -922,7 +1179,10 @@ export function EvidenceEngineConsole() {
                   <span className="text-sm font-semibold text-slate-800">Timeframe</span>
                   <input
                     value={timeframe}
-                    onChange={(event) => setTimeframe(event.target.value)}
+                    onChange={(event) => {
+                      setTimeframeTouched(true);
+                      setTimeframe(event.target.value);
+                    }}
                     placeholder="week 16, 52 weeks, long-term follow-up"
                     className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
                   />
@@ -965,7 +1225,7 @@ export function EvidenceEngineConsole() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Population</span>
+                <span className="text-sm font-semibold text-slate-800">{fieldLabels.population}</span>
                 <input
                   value={population}
                   onChange={(event) => {
@@ -977,7 +1237,7 @@ export function EvidenceEngineConsole() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Intervention / Exposure</span>
+                <span className="text-sm font-semibold text-slate-800">{fieldLabels.intervention}</span>
                 <input
                   value={interventionOrExposure}
                   onChange={(event) => {
@@ -989,7 +1249,7 @@ export function EvidenceEngineConsole() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Comparator</span>
+                <span className="text-sm font-semibold text-slate-800">{fieldLabels.comparator}</span>
                 <input
                   value={comparator}
                   onChange={(event) => setComparator(event.target.value)}
@@ -998,7 +1258,7 @@ export function EvidenceEngineConsole() {
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-800">Context</span>
+                <span className="text-sm font-semibold text-slate-800">{fieldLabels.context}</span>
                 <input
                   value={context}
                   onChange={(event) => setContext(event.target.value)}
@@ -1009,7 +1269,7 @@ export function EvidenceEngineConsole() {
             </div>
 
             <label className="block">
-              <span className="text-sm font-semibold text-slate-800">Outcomes</span>
+              <span className="text-sm font-semibold text-slate-800">{fieldLabels.outcomes}</span>
               <textarea
                 value={outcomesText}
                 onChange={(event) => setOutcomesText(event.target.value)}
@@ -1057,7 +1317,7 @@ export function EvidenceEngineConsole() {
               disabled={loading}
               className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {loading ? "Running analysis..." : `Run ${selectedChain.name}`}
+              {loading ? "Running analysis..." : runButtonLabel(selectedChain.name, protocolMeta.reviewTypeRecommendation)}
             </button>
           </div>
         </div>
@@ -1157,7 +1417,7 @@ export function EvidenceEngineConsole() {
                           ["Records", recordCount],
                           ["Extracted", includedCount],
                           ["Full text", fullTextRecoveredCount],
-                          ["Manual PDF", manualPdfCount],
+                          ["Needs full text", needsFullTextCount],
                         ].map(([label, value]) => (
                           <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
@@ -1360,18 +1620,19 @@ export function EvidenceEngineConsole() {
         </div>
       ) : null}
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Source & Methods Console</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-950">Run backend evidence tools directly</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              These panels expose Python backend functions that were previously hidden behind the main workflow: universal query routing,
-              single-record hydration, FAERS, trial registry search, label lookup, and tracked asynchronous runs.
-            </p>
+      <details className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <summary className="cursor-pointer list-none">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Advanced tools</p>
+              <h3 className="mt-2 text-lg font-semibold text-slate-950">Inspect retrieval, hydration, safety, trials, labels, and run history</h3>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Optional diagnostics for reviewers and operators. Most users can ignore this drawer and use the main workflow plus Evidence Chat.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Open advanced drawer</span>
           </div>
-          <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">Python-backed</span>
-        </div>
+        </summary>
 
         <div className="mt-5 flex flex-wrap gap-2">
           {sourceMethodTabs.map((tab) => (
@@ -1546,21 +1807,21 @@ export function EvidenceEngineConsole() {
               </pre>
             ) : (
               <p className="mt-4 rounded-xl bg-white p-4 text-sm leading-6 text-slate-600">
-                Run one of the method panels to inspect the raw, source-linked Python backend artifact before it is promoted or synthesized.
+                Run one of the advanced tools to inspect the raw source-linked artifact. These diagnostics are not the normal client workflow.
               </p>
             )}
           </div>
         </div>
-      </div>
+      </details>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Document Evidence Chat</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-950">Ask an uploaded paper or document for source-grounded evidence</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Evidence Chat</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">Ask the report, retrieved sources, or an uploaded document</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Upload a PDF/DOCX or paste text, then ask for endpoints, safety events, discontinuations, HRs, confidence intervals,
-              p-values, population, comparator, or evidence snippets. Answers stay candidate-only and source-linked.
+              Free deterministic chat searches only the selected evidence context. Ask for endpoints, safety events, discontinuations,
+              HRs, confidence intervals, p-values, population, comparator, source snippets, or review gaps.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Free deterministic mode</span>
@@ -1568,23 +1829,88 @@ export function EvidenceEngineConsole() {
 
         <div className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Chat context</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                {[
+                  {
+                    id: "report" as ChatScope,
+                    label: "Report",
+                    detail: reportMarkdown ? "Use generated SLR text" : "Run an analysis first",
+                    disabled: !reportMarkdown,
+                  },
+                  {
+                    id: "sources" as ChatScope,
+                    label: "Sources",
+                    detail: sourceInventory.length ? `${sourceInventory.length} records available` : "Run retrieval first",
+                    disabled: !sourceInventory.length,
+                  },
+                  {
+                    id: "upload" as ChatScope,
+                    label: "Upload",
+                    detail: "PDF, DOCX, or pasted text",
+                    disabled: false,
+                  },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    disabled={option.disabled}
+                    onClick={() => setChatScope(option.id)}
+                    className={`rounded-2xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      chatScope === option.id
+                        ? "border-teal-600 bg-teal-50 text-teal-950"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">{option.label}</span>
+                    <span className="mt-1 block text-xs leading-5 opacity-80">{option.detail}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="block">
               <span className="text-sm font-semibold text-slate-800">Document title</span>
               <input
                 value={chatTitle}
                 onChange={(event) => setChatTitle(event.target.value)}
+                disabled={chatScope !== "upload"}
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
               />
             </label>
             <label className="block">
-              <span className="text-sm font-semibold text-slate-800">Ask the document</span>
+              <span className="text-sm font-semibold text-slate-800">Starter question</span>
               <textarea
                 value={chatQuestion}
                 onChange={(event) => setChatQuestion(event.target.value)}
                 rows={3}
+                placeholder="Optional: type a first question, then send from the chat panel."
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
               />
             </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "What is the population?",
+                "What are the key efficacy endpoints?",
+                "Extract HR, CI, and p-values.",
+                "What adverse events are reported?",
+                "What discontinuation data is available?",
+                "What needs human verification?",
+              ].map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => {
+                    setChatQuestion(prompt);
+                    void runDocumentChat(prompt);
+                  }}
+                  disabled={chatLoading}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="text-sm font-semibold text-slate-800">DOI</span>
@@ -1592,6 +1918,7 @@ export function EvidenceEngineConsole() {
                   value={chatDoi}
                   onChange={(event) => setChatDoi(event.target.value)}
                   placeholder="10.xxxx/source"
+                  disabled={chatScope !== "upload"}
                   className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
                 />
               </label>
@@ -1601,6 +1928,7 @@ export function EvidenceEngineConsole() {
                   value={chatSourceUrl}
                   onChange={(event) => setChatSourceUrl(event.target.value)}
                   placeholder="https://doi.org/..."
+                  disabled={chatScope !== "upload"}
                   className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
                 />
               </label>
@@ -1611,6 +1939,7 @@ export function EvidenceEngineConsole() {
                 type="file"
                 accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
                 onChange={(event) => setChatFile(event.target.files?.[0] ?? null)}
+                disabled={chatScope !== "upload"}
                 className="mt-3 block w-full text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
               />
               {chatFile ? <p className="mt-2 text-xs text-slate-500">{chatFile.name}</p> : null}
@@ -1622,64 +1951,131 @@ export function EvidenceEngineConsole() {
                 onChange={(event) => setChatSourceText(event.target.value)}
                 rows={7}
                 placeholder="Paste full text, table text, results, safety, or methods sections..."
+                disabled={chatScope !== "upload"}
                 className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
               />
             </label>
+            {chatScope !== "upload" ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                {chatScope === "report"
+                  ? "Using the latest generated report, quantitative synthesis artifact, and report metadata as the chat context."
+                  : "Using normalized source records, identifiers, abstracts, hydration status, and available full-text snippets as the chat context."}
+              </div>
+            ) : null}
             <button
               type="button"
-              onClick={runDocumentChat}
+              onClick={() => runDocumentChat()}
               disabled={chatLoading}
               className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {chatLoading ? "Asking document..." : "Ask Document"}
+              {chatLoading ? "Thinking..." : "Send message"}
             </button>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Chat output</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Chat</p>
                 <h4 className="mt-2 font-semibold text-slate-950">
-                  {chatResponse ? (chatResponse.ok ? "Source-grounded answer ready" : "Document chat needs attention") : "Waiting for a question"}
+                  {chatMessages.length ? "Conversation with selected evidence" : "Upload or choose context, then ask a question"}
                 </h4>
               </div>
               {chatResponse?.queryRunId ? <span className="font-mono text-[11px] text-slate-500">{chatResponse.queryRunId.slice(0, 8)}</span> : null}
             </div>
 
-            {chatResponse?.error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{chatResponse.error}</p> : null}
+            <div className="mt-4 max-h-[42rem] space-y-4 overflow-auto pr-1">
+              {chatMessages.length ? (
+                chatMessages.map((message) => {
+                  const chat = message.response?.chat;
+                  return (
+                    <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[92%] rounded-2xl p-4 shadow-sm ${message.role === "user" ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-900"}`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${message.role === "user" ? "text-slate-300" : "text-slate-500"}`}>
+                            {message.role === "user" ? "You" : "EvidaraOS"} · {message.scope}
+                          </p>
+                          {chat ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">{chat.snippets.length} snippets</span> : null}
+                        </div>
+                        <pre className={`mt-3 whitespace-pre-wrap text-sm leading-6 ${message.role === "user" ? "text-white" : "text-slate-800"}`}>{message.text}</pre>
+                        {message.error ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{message.error}</p> : null}
+                        {chat?.extracted_fields.length ? (
+                          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Extracted fields</p>
+                            <div className="mt-2 space-y-2">
+                              {chat.extracted_fields.slice(0, 6).map((field, index) => (
+                                <div key={`${message.id}-${field.field}-${index}`} className="rounded-lg bg-white p-2">
+                                  <p className="text-xs font-semibold text-slate-500">{field.field}</p>
+                                  <p className="mt-1 text-sm text-slate-900">{field.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {chat?.snippets.length ? (
+                          <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">Source snippets</summary>
+                            <div className="mt-3 space-y-3">
+                              {chat.snippets.slice(0, 4).map((snippet, index) => {
+                                const section = typeof snippet.section === "string" ? snippet.section : "Evidence context";
+                                const text = typeof snippet.snippet === "string" ? snippet.snippet : typeof snippet.text === "string" ? snippet.text : "";
+                                return (
+                                  <div key={`${message.id}-${section}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <p className="text-xs font-semibold text-slate-500">{section}</p>
+                                    <p className="mt-2 text-sm leading-6 text-slate-800">{text.slice(0, 800)}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="rounded-2xl bg-white p-5 text-sm leading-6 text-slate-600">
+                  Upload a PDF/DOCX, paste text, or choose Report/Sources after running an analysis. Then ask follow-up questions in the box on the left.
+                </div>
+              )}
+              {chatLoading ? <div className="w-fit rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">Searching selected evidence...</div> : null}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-900">Ask a question</span>
+                <textarea
+                  value={chatQuestion}
+                  onChange={(event) => setChatQuestion(event.target.value)}
+                  rows={3}
+                  placeholder="Ask anything about the uploaded document, report, or retrieved sources..."
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-6 outline-none ring-teal-500/20 focus:border-teal-600 focus:ring-4"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => runDocumentChat()}
+                disabled={chatLoading || !chatQuestion.trim()}
+                className="mt-3 w-full rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {chatLoading ? "Thinking..." : "Send"}
+              </button>
+            </div>
+
+            {chatMessages.length ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setChatMessages([]);
+                  setChatResponse(null);
+                }}
+                className="mt-4 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Clear chat
+              </button>
+            ) : null}
 
             {chatResponse?.chat ? (
-              <div className="mt-4 space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {[
-                    ["Status", chatResponse.chat.status],
-                    ["Snippets", chatResponse.chat.snippets.length],
-                    ["Fields", chatResponse.chat.extracted_fields.length],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-xl border border-slate-200 bg-white p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
-                      <p className="mt-2 break-words text-sm font-semibold text-slate-950">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="font-semibold text-slate-950">Answer</p>
-                  <pre className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-800">{chatResponse.chat.answer}</pre>
-                </div>
-                {chatResponse.chat.extracted_fields.length ? (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <p className="font-semibold text-slate-950">Extracted fields</p>
-                    <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-slate-200">
-                      {chatResponse.chat.extracted_fields.slice(0, 12).map((field, index) => (
-                        <div key={`${field.field}-${index}`} className="border-b border-slate-100 p-3 last:border-b-0">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{field.field}</p>
-                          <p className="mt-1 text-sm text-slate-900">{field.value}</p>
-                          {field.source_context ? <p className="mt-1 text-xs text-slate-500">{field.source_context}</p> : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
+              <div className="mt-4">
                 <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
                   <p className="font-semibold text-teal-950">Review queue handoff</p>
                   <p className="mt-2 text-sm leading-6 text-teal-900">
@@ -1702,12 +2098,11 @@ export function EvidenceEngineConsole() {
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">PDF Extraction Workbench</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-950">Turn full text into a reviewed extraction candidate</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Source Paper Extraction</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-950">Extract data from an original study PDF</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Upload a source PDF or paste full-text sections for records marked manual PDF required. EvidaraOS scans for study design,
-              statistical blocks, baseline counts, outcomes, adverse events, and discontinuation reasons, then keeps everything candidate-only
-              until a reviewer promotes it.
+              Use this for journal articles, trial reports, labels, or source PDFs marked manual PDF required. For generated EvidaraOS reports,
+              use Evidence Chat with the Report context instead of extracting it as if it were an original clinical paper.
             </p>
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Human-in-the-loop</span>
@@ -1752,6 +2147,11 @@ export function EvidenceEngineConsole() {
                 className="mt-3 block w-full text-sm text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-950 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
               />
               {pdfFile ? <p className="mt-2 text-xs text-slate-500">{pdfFile.name}</p> : null}
+              {pdfLooksLikeGeneratedReport ? (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
+                  This looks like a generated report, not an original source paper. Use Evidence Chat with Report context for this file, or upload a journal article/trial PDF here.
+                </p>
+              ) : null}
             </label>
             <label className="block">
               <span className="text-sm font-semibold text-slate-800">Or paste extracted full text / table text</span>
@@ -1766,10 +2166,10 @@ export function EvidenceEngineConsole() {
             <button
               type="button"
               onClick={runPdfExtraction}
-              disabled={pdfLoading}
+              disabled={pdfLoading || pdfLooksLikeGeneratedReport}
               className="w-full rounded-2xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {pdfLoading ? "Extracting PDF source..." : "Create Extraction Candidate"}
+              {pdfLoading ? "Extracting PDF source..." : pdfLooksLikeGeneratedReport ? "Use Evidence Chat for generated reports" : "Create Extraction Candidate"}
             </button>
           </div>
 
