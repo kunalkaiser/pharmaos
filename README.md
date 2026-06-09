@@ -32,7 +32,7 @@ Query audit foundations exist in `db/migrations/0002_query_audit_foundation.sql`
 
 Candidate promotion foundation exists under `POST /api/internal/review/candidate-promotions`. It can promote a real `EvidenceCandidate` into a reviewed citation and optional evidence record only when an internal reviewer supplies citation text, review notes, and attestation. It does not run retrieval, generate claims, summarize abstracts, or create fake reviewer identity.
 
-Production persistence foundation now exists for evidence sources, citations, evidence records, evidence packets, retrieval runs, query audit tables, candidate promotions, and audit logs. Set server-only `DATABASE_URL` to enable PostgreSQL persistence. Do not expose database credentials through `NEXT_PUBLIC_*`.
+Production persistence foundation now exists for evidence sources, citations, evidence records, evidence packets, retrieval runs, query audit tables, Evidence Chat conversations/messages, candidate promotions, and audit logs. Set server-only `DATABASE_URL` to enable PostgreSQL persistence. Do not expose database credentials through `NEXT_PUBLIC_*`.
 
 Auth/RBAC foundation now exists with real user, role, password, login, logout, session, and route-protection primitives. No fake users are seeded. Set `DATABASE_URL` and `EVIDARA_AUTH_SESSION_SECRET`, apply `db/migrations/0004_auth_rbac_foundation.sql` and `db/migrations/0005_tenant_organization_scoping.sql`, then create a real user and organization with `npm run create:auth-user`. Production audit immutability, report generation/export, and EpiEngine scoring are still not implemented.
 
@@ -150,6 +150,7 @@ Internal endpoint access:
 - `db/migrations/0005_tenant_organization_scoping.sql`: planned PostgreSQL schema for organizations, memberships, and tenant-scoped evidence/audit columns.
 - `db/migrations/0006_source_citation_deduplication.sql`: planned PostgreSQL schema for canonical source keys and citation hashes.
 - `db/migrations/0008_audit_immutability_foundation.sql`: planned PostgreSQL schema/trigger foundation for append-only audit logs and event hashes.
+- `db/migrations/0011_evidence_chat_persistence.sql`: planned PostgreSQL schema for Evidence Chat conversations and full normalized chat-response turns.
 - `src/lib/db/client.ts`: server-only PostgreSQL client used only when `DATABASE_URL` is configured.
 - `src/lib/auth/*`: auth/RBAC helpers for password verification, signed session cookies, users, and route roles.
 - `db/validation/0001_provenance_constraints.sql`: disposable-database validation script proving source -> citation -> evidence record constraints.

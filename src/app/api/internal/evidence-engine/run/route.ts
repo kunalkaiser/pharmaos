@@ -210,31 +210,129 @@ export async function POST(request: Request) {
       ],
     });
   } catch (error) {
+    const primaryError = error instanceof Error ? error.message : "Evidence engine run failed.";
+
+    if (liveSearch) {
+      try {
+        await recordQueryRunStep({
+          queryRunId: queryRun.id,
+          stepOrder: 2,
+          stepName: "Retry Python evidence engine without live retrieval",
+          stepType: "search_source",
+          completedAt: new Date().toISOString(),
+          status: "partial_failure",
+          notes: `Live retrieval failed and a fast deterministic retry was started. Primary error: ${primaryError}`,
+        });
+
+        const fallbackResult = await runEvidenceEngineChain({
+          chain_id: chainId,
+          question,
+          drug: drug || interventionOrExposure,
+          indication: indication || population,
+          framework,
+          population,
+          intervention_or_exposure: interventionOrExposure,
+          comparator,
+          outcomes,
+          timeframe,
+          context,
+          max_results: Math.min(maxResults, 10),
+          live_search: false,
+        });
+
+        const evidenceCandidates = adaptEngineRunToEvidenceCandidates(fallbackResult, {
+          chainId,
+          question: queryText,
+          drug,
+          indication,
+        });
+
+        await recordQueryError({
+          queryRunId: queryRun.id,
+          providerId: "python_engine",
+          errorType: "live_retrieval_retry_fallback",
+          errorMessage: primaryError,
+          recoverable: true,
+        });
+
+        await completeQueryRun(queryRun.id, "partial_failure", {
+          chainId,
+          engineStatus: fallbackResult.status,
+          candidateOnly: true,
+          generatedClaims: false,
+          evidenceCandidates,
+          recoveredWithFastRetry: true,
+          primaryError,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          engineConnected: true,
+          internalOnly: true,
+          candidateOnly: true,
+          generatedClaims: false,
+          reviewRequired: true,
+          queryRunId: queryRun.id,
+          evidenceCandidates,
+          candidateEvents: [],
+          result: {
+            ...fallbackResult,
+            limitations: [
+              `Live retrieval failed, so EvidaraOS returned a fast deterministic scaffold instead. Original error: ${primaryError}`,
+              ...(fallbackResult.limitations ?? []),
+            ],
+          },
+          limitations: [
+            "Live retrieval failed during this run; a non-live deterministic fallback was returned instead of a hard failure.",
+            "Use a smaller max-results value or run again after upstream source APIs recover.",
+            "Human review is required before report export, scoring, payer use, or regulatory use.",
+          ],
+          recovery: {
+            attempted: true,
+            mode: "fast_non_live_retry",
+            originalError: primaryError,
+          },
+        });
+      } catch (fallbackError) {
+        await recordQueryError({
+          queryRunId: queryRun.id,
+          providerId: "python_engine",
+          errorType: "evidence_engine_fallback_failed",
+          errorMessage: fallbackError instanceof Error ? fallbackError.message : "Fallback evidence engine run failed.",
+          recoverable: true,
+        });
+      }
+    }
+
     await recordQueryError({
       queryRunId: queryRun.id,
       providerId: "python_engine",
       errorType: "evidence_engine_run_failed",
-      errorMessage: error instanceof Error ? error.message : "Evidence engine run failed.",
+      errorMessage: primaryError,
       recoverable: true,
     });
     await completeQueryRun(queryRun.id, "failed", {
       chainId,
       candidateOnly: true,
       generatedClaims: false,
-      error: error instanceof Error ? error.message : "Evidence engine run failed.",
+      error: primaryError,
     });
 
     return NextResponse.json(
       {
         ok: false,
         engineConnected: false,
-        error: error instanceof Error ? error.message : "Evidence engine run failed.",
+        error: `${primaryError} Try turning off live retrieval or lowering max results for a fast first pass.`,
         internalOnly: true,
         candidateOnly: true,
         generatedClaims: false,
         queryRunId: queryRun.id,
+        recovery: {
+          attempted: liveSearch,
+          mode: liveSearch ? "fast_non_live_retry_failed" : "none",
+        },
       },
-      { status: 502 }
+      { status: 200 }
     );
   }
 }

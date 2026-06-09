@@ -135,15 +135,60 @@ export type EvidenceEngineDocumentChatRequest = {
   docx_base64?: string;
 };
 
+export type EvidenceChatCitation = {
+  source_type: "candidate" | "source_record" | "sof_row" | "faers_signal" | "label" | "paper" | "run_summary" | "other";
+  source_id: string;
+  title: string;
+  snippet: string;
+  locator?: string | null;
+  relevance: "high" | "medium" | "low";
+};
+
+export type EvidenceChatCandidate = {
+  id: string;
+  name: string;
+  score: number;
+  signal?: string | null;
+};
+
+export type EvidenceChatSignal = {
+  name: string;
+  value: string;
+  source_id?: string | null;
+};
+
+export type EvidenceChatSource = {
+  source_id: string;
+  type: string;
+  title: string;
+};
+
+export type EvidenceChatToolAction = {
+  tool: "search_pubmed" | "lookup_faers" | "run_chain" | "none";
+  query: string;
+  reason: string;
+};
+
 export type EvidenceEngineDocumentChatResponse = {
-  status: string;
   answer: string;
-  snippets: Array<Record<string, unknown>>;
-  extracted_fields: Array<Record<string, string>>;
-  extracted_signals: Record<string, unknown>;
-  record: Record<string, unknown>;
-  provenance: Record<string, unknown>;
+  answer_type: "context_only" | "retrieved" | "synthesized" | "needs_clarification";
+  confidence: "high" | "medium" | "low";
   limitations: string[];
+  citations: EvidenceChatCitation[];
+  evidence_used: {
+    candidates: EvidenceChatCandidate[];
+    signals: EvidenceChatSignal[];
+    sources: EvidenceChatSource[];
+  };
+  follow_up_questions: string[];
+  tool_actions: EvidenceChatToolAction[];
+  human_review_required: true;
+  chain_type?: "R" | "P" | "C" | "CI" | "SLR" | "HEOR" | "Reg" | "B" | null;
+  query_intent?: string | null;
+  answer_scope?: "single_run" | "cross_run" | "external_literature" | null;
+  risk_flags?: string[];
+  regulatory_notes?: string | null;
+  provenance_summary?: string | null;
 };
 
 export type EvidenceEngineExportRequest = {

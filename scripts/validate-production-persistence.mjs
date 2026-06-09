@@ -8,6 +8,7 @@ const requiredFiles = [
   "db/migrations/0001_citation_provenance_foundation.sql",
   "db/migrations/0002_query_audit_foundation.sql",
   "db/migrations/0003_candidate_promotion_foundation.sql",
+  "db/migrations/0011_evidence_chat_persistence.sql",
 ];
 
 const requiredTables = [
@@ -24,6 +25,8 @@ const requiredTables = [
   "query_errors",
   "query_audit_snapshots",
   "candidate_promotions",
+  "evidence_chat_conversations",
+  "evidence_chat_messages",
 ];
 
 const failures = [];

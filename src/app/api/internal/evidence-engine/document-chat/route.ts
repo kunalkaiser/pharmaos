@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+import { appendEvidenceChatTurn, type EvidenceChatScope } from "@/lib/evidence-chat-persistence";
 import { adaptEngineRunToEvidenceCandidates } from "@/lib/evidence-engine/candidate-adapter";
 import { runEvidenceEngineDocumentChat } from "@/lib/evidence-engine/client";
-import type { EvidenceEngineRunResponse } from "@/lib/evidence-engine/types";
+import type { EvidenceEngineDocumentChatResponse, EvidenceEngineRunResponse } from "@/lib/evidence-engine/types";
 import {
   completeQueryRun,
   recordCandidateEvents,
@@ -15,6 +17,41 @@ export const runtime = "nodejs";
 
 function cleanString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function cleanScope(value: unknown): EvidenceChatScope {
+  return value === "report" || value === "sources" || value === "upload" ? value : "upload";
+}
+
+function hashSource(value: string) {
+  return value ? createHash("sha256").update(value).digest("hex") : "";
+}
+
+function chatSourceRecords(chat: EvidenceEngineDocumentChatResponse) {
+  return chat.evidence_used.sources.map((source) => {
+    const citation = chat.citations.find((item) => item.source_id === source.source_id);
+    return {
+      id: source.source_id,
+      source: "document_chat",
+      title: source.title,
+      abstract: citation?.snippet ?? chat.answer.slice(0, 1000),
+      doi: "",
+      pmid: "",
+      url: "",
+      keywords: ["document_chat", "source_grounded_answer", "candidate_only"],
+      enrichment: {
+        document_chat: true,
+        candidate_only: true,
+        generated_claim: false,
+        requires_human_review: true,
+        answer_type: chat.answer_type,
+        confidence: chat.confidence,
+        query_intent: chat.query_intent,
+        citations: chat.citations.filter((item) => item.source_id === source.source_id).slice(0, 4),
+        signals: chat.evidence_used.signals.filter((item) => item.source_id === source.source_id).slice(0, 12),
+      },
+    };
+  });
 }
 
 export async function POST(request: Request) {
@@ -34,6 +71,10 @@ export async function POST(request: Request) {
   const sourceText = cleanString(body.source_text, 300_000);
   const pdfBase64 = cleanString(body.pdf_base64, 14_000_000);
   const docxBase64 = cleanString(body.docx_base64, 14_000_000);
+  const scope = cleanScope(body.scope);
+  const conversationId = cleanString(body.conversation_id, 80);
+  const actorId = request.headers.get("x-evidara-actor-id") ?? undefined;
+  const organizationId = request.headers.get("x-evidara-organization-id") ?? undefined;
 
   if (!question) {
     return NextResponse.json({ ok: false, error: "Ask a document question before running chat." }, { status: 400 });
@@ -45,7 +86,8 @@ export async function POST(request: Request) {
   const queryRun = await startQueryRun({
     queryText: question,
     accessContext: "app_workspace",
-    actorType: "anonymous_internal",
+    actorType: actorId ? "future_user" : "anonymous_internal",
+    actorId,
     liveRetrieval: false,
   });
 
@@ -78,10 +120,11 @@ export async function POST(request: Request) {
       stepName: "Answer document question with source snippets",
       stepType: "normalize_results",
       completedAt: new Date().toISOString(),
-      status: chat.status === "answered_from_document" ? "completed" : "partial_failure",
-      notes: `Document chat status: ${chat.status}; snippets: ${chat.snippets.length}; fields: ${chat.extracted_fields.length}`,
+      status: chat.answer_type === "needs_clarification" ? "partial_failure" : "completed",
+      notes: `Document chat answer type: ${chat.answer_type}; confidence: ${chat.confidence}; citations: ${chat.citations.length}; signals: ${chat.evidence_used.signals.length}`,
     });
 
+    const sourceRecords = chatSourceRecords(chat);
     const adapterInput: EvidenceEngineRunResponse = {
       chain: {
         id: "full_slr",
@@ -89,11 +132,11 @@ export async function POST(request: Request) {
         deterministic_python: true,
         llm_strengthens: ["answer wording", "table interpretation"],
         status: "available",
-        outputs: ["source-grounded answer", "snippets", "extraction candidate"],
+        outputs: ["source-grounded answer", "citations", "structured signals"],
       },
-      status: chat.status,
+      status: chat.answer_type === "needs_clarification" ? "needs_attention" : "completed",
       artifacts: {
-        source_records: [chat.record],
+        source_records: sourceRecords,
         document_chat: chat,
       },
       limitations: chat.limitations,
@@ -133,13 +176,29 @@ export async function POST(request: Request) {
       })),
     );
 
+    const persistedChat = await appendEvidenceChatTurn({
+      conversationId: conversationId || undefined,
+      organizationId,
+      actorId,
+      queryRunId: queryRun.id,
+      scope,
+      title: title || `${scope} evidence chat`,
+      sourceTitle: filename || title || `${scope} context`,
+      sourceHash: hashSource(sourceText || pdfBase64 || docxBase64),
+      userMessage: question,
+      chatResponse: chat,
+    });
+
     await completeQueryRun(queryRun.id, "completed", {
       documentChat: true,
       candidateOnly: true,
       generatedClaims: false,
       evidenceCandidates,
-      chatStatus: chat.status,
-      sourceTextHash: chat.provenance.source_text_hash,
+      answerType: chat.answer_type,
+      confidence: chat.confidence,
+      provenanceSummary: chat.provenance_summary,
+      evidenceChatConversationId: persistedChat.conversation.id,
+      evidenceChatMessageId: persistedChat.message.id,
     });
 
     return NextResponse.json({
@@ -150,6 +209,12 @@ export async function POST(request: Request) {
       generatedClaims: false,
       reviewRequired: true,
       queryRunId: queryRun.id,
+      conversationId: persistedChat.conversation.id,
+      chatMessageId: persistedChat.message.id,
+      persistedChat: {
+        conversation: persistedChat.conversation,
+        message: persistedChat.message,
+      },
       chat,
       evidenceCandidates,
       candidateEvents,

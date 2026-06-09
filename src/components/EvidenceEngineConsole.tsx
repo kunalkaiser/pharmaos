@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { EvidenceEngineDocumentChatResponse } from "@/lib/evidence-engine/types";
 
 type Chain = {
   id: string;
@@ -113,16 +115,13 @@ type DocumentChatResponse = {
   engineConnected: boolean;
   reviewRequired?: boolean;
   queryRunId?: string;
-  chat?: {
-    status: string;
-    answer: string;
-    snippets: Array<Record<string, unknown>>;
-    extracted_fields: Array<Record<string, string>>;
-    extracted_signals: Record<string, unknown>;
-    record: Record<string, unknown>;
-    provenance: Record<string, unknown>;
-    limitations: string[];
+  conversationId?: string;
+  chatMessageId?: string;
+  persistedChat?: {
+    conversation: EvidenceChatConversation;
+    message: EvidenceChatStoredMessage;
   };
+  chat?: EvidenceEngineDocumentChatResponse;
   evidenceCandidates?: Array<{
     candidateId: string;
     sourceProvider: string;
@@ -135,6 +134,32 @@ type DocumentChatResponse = {
 };
 
 type ChatScope = "report" | "sources" | "upload";
+
+type EvidenceChatConversation = {
+  id: string;
+  scope: ChatScope;
+  title: string;
+  sourceTitle?: string;
+  updatedAt: string;
+};
+
+type EvidenceChatStoredMessage = {
+  id: string;
+  conversationId: string;
+  queryRunId?: string;
+  turnIndex: number;
+  userMessage: string;
+  chatResponse: EvidenceEngineDocumentChatResponse;
+  createdAt: string;
+};
+
+type EvidenceChatConversationResponse = {
+  ok: boolean;
+  conversations?: EvidenceChatConversation[];
+  conversation?: EvidenceChatConversation;
+  messages?: EvidenceChatStoredMessage[];
+  error?: string;
+};
 
 type ChatMessage = {
   id: string;
@@ -151,6 +176,15 @@ type SourceMethodResponse = {
   action?: string;
   result?: unknown;
   error?: string;
+};
+
+type EvidenceEngineConsoleFocus = "workspace" | "chat" | "tools";
+
+type ReportQualityCheck = {
+  id: string;
+  label: string;
+  passed: boolean;
+  details?: string[];
 };
 
 const fallbackChains: Chain[] = [
@@ -212,6 +246,83 @@ function getSourceInventory(artifacts: Record<string, unknown> | undefined) {
 function getReportMarkdown(artifacts: Record<string, unknown> | undefined) {
   const value = artifacts?.report_markdown;
   return typeof value === "string" ? value : "";
+}
+
+function getClientReadyReportMarkdown(artifacts: Record<string, unknown> | undefined) {
+  const value = artifacts?.client_ready_report_markdown;
+  return typeof value === "string" && value.trim() ? value : getReportMarkdown(artifacts);
+}
+
+function getReportQuality(artifacts: Record<string, unknown> | undefined) {
+  const value = artifacts?.report_quality;
+  return isRecord(value) ? value : null;
+}
+
+function getReportSections(artifacts: Record<string, unknown> | undefined) {
+  return getArtifactArray(artifacts, "report_sections").filter(isRecord);
+}
+
+function getReportSectionQuality(artifacts: Record<string, unknown> | undefined) {
+  return getArtifactArray(artifacts, "report_section_quality").filter(isRecord);
+}
+
+function numberValue(record: Record<string, unknown> | null, keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  }
+  return null;
+}
+
+function boolValue(record: Record<string, unknown> | null, key: string) {
+  return record?.[key] === true;
+}
+
+function stringArrayValue(record: Record<string, unknown> | null, key: string) {
+  const value = record?.[key];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function reportQualityChecks(reportQuality: Record<string, unknown> | null): ReportQualityCheck[] {
+  if (!reportQuality) return [];
+  const missingSections = stringArrayValue(reportQuality, "missing_sections");
+  const malformedSignals = stringArrayValue(reportQuality, "malformed_text_signals");
+  const duplicateHeadings = stringArrayValue(reportQuality, "duplicate_headings");
+  const longLineCount = numberValue(reportQuality, ["long_line_count"]) ?? 0;
+  return [
+    {
+      id: "structure",
+      label: "Required sections present",
+      passed: missingSections.length === 0,
+      details: missingSections.map((item) => `Missing: ${item}`),
+    },
+    {
+      id: "formatting",
+      label: "Formatting and text integrity",
+      passed: malformedSignals.length === 0 && duplicateHeadings.length === 0 && longLineCount === 0,
+      details: [...malformedSignals, ...duplicateHeadings.map((item) => `Duplicate heading: ${item}`), ...(longLineCount ? [`${longLineCount} long line(s) need wrapping`] : [])],
+    },
+    {
+      id: "governance",
+      label: "Draft and human-review language",
+      passed: boolValue(reportQuality, "has_governance_language"),
+      details: boolValue(reportQuality, "has_governance_language") ? [] : ["Governance language was not detected."],
+    },
+    {
+      id: "prisma",
+      label: "PRISMA flow included",
+      passed: boolValue(reportQuality, "has_prisma"),
+      details: boolValue(reportQuality, "has_prisma") ? [] : ["PRISMA terms were not detected."],
+    },
+    {
+      id: "quant",
+      label: "Quantitative readiness described",
+      passed: boolValue(reportQuality, "has_quantitative_section"),
+      details: boolValue(reportQuality, "has_quantitative_section") ? [] : ["Quantitative synthesis readiness was not detected."],
+    },
+  ];
 }
 
 function buildReportChatText(markdown: string, artifacts: Record<string, unknown> | undefined) {
@@ -521,7 +632,7 @@ function runButtonLabel(chainName: string, recommendation: ReviewTypeRecommendat
   return map[recommendation.review_type] ?? `Run ${recommendation.label}`;
 }
 
-export function EvidenceEngineConsole() {
+export function EvidenceEngineConsole({ focus = "workspace" }: { focus?: EvidenceEngineConsoleFocus } = {}) {
   const [chains, setChains] = useState<Chain[]>(fallbackChains);
   const [selectedChainId, setSelectedChainId] = useState("full_slr");
   const [question, setQuestion] = useState(starterQuestion);
@@ -559,7 +670,7 @@ export function EvidenceEngineConsole() {
   const [loading, setLoading] = useState(false);
   const [engineStatus, setEngineStatus] = useState("Checking engine connection...");
   const [runResponse, setRunResponse] = useState<RunResponse | null>(null);
-  const [outputTab, setOutputTab] = useState<"summary" | "sources" | "figures" | "report" | "candidates" | "limitations">("summary");
+  const [outputTab, setOutputTab] = useState<"summary" | "sources" | "quality" | "sections" | "figures" | "report" | "candidates" | "limitations">("summary");
   const [pdfTitle, setPdfTitle] = useState("Manual full-text source");
   const [pdfDoi, setPdfDoi] = useState("");
   const [pdfSourceUrl, setPdfSourceUrl] = useState("");
@@ -577,6 +688,9 @@ export function EvidenceEngineConsole() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatResponse, setChatResponse] = useState<DocumentChatResponse | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState("");
+  const [chatConversations, setChatConversations] = useState<EvidenceChatConversation[]>([]);
+  const [chatConversationStatus, setChatConversationStatus] = useState("Conversation history is saved after the first message.");
   const [exportingFormat, setExportingFormat] = useState<"pdf" | null>(null);
   const [exportError, setExportError] = useState("");
   const [sourceMethodTab, setSourceMethodTab] = useState<(typeof sourceMethodTabs)[number]>("universal");
@@ -584,6 +698,72 @@ export function EvidenceEngineConsole() {
   const [sourceMethodResponse, setSourceMethodResponse] = useState<SourceMethodResponse | null>(null);
   const [hydrateRecordJson, setHydrateRecordJson] = useState('{\n  "id": "example-doi",\n  "source": "manual",\n  "title": "Source record for hydration",\n  "doi": ""\n}');
   const [runKind, setRunKind] = useState<"universal_query" | "full_slr" | "safety_review">("universal_query");
+
+  function internalRequestHeaders() {
+    const accessToken = new URLSearchParams(window.location.search).get("access_token");
+    return {
+      "content-type": "application/json",
+      ...(accessToken ? { "x-evidara-internal-token": accessToken } : {}),
+    };
+  }
+
+  async function refreshChatConversations() {
+    try {
+      const response = await fetch("/api/internal/evidence-engine/chat-conversations", {
+        headers: internalRequestHeaders(),
+      });
+      const payload = (await response.json()) as EvidenceChatConversationResponse;
+      if (payload.ok) {
+        setChatConversations(payload.conversations ?? []);
+        setChatConversationStatus((payload.conversations?.length ?? 0) ? "Saved conversations are available." : "No saved conversations yet.");
+      } else {
+        setChatConversationStatus(payload.error ?? "Saved conversations are unavailable.");
+      }
+    } catch (error) {
+      setChatConversationStatus(error instanceof Error ? error.message : "Saved conversations are unavailable.");
+    }
+  }
+
+  async function loadChatConversation(conversationId: string) {
+    setChatConversationStatus("Loading saved conversation...");
+    try {
+      const response = await fetch(`/api/internal/evidence-engine/chat-conversations?conversation_id=${encodeURIComponent(conversationId)}`, {
+        headers: internalRequestHeaders(),
+      });
+      const payload = (await response.json()) as EvidenceChatConversationResponse;
+      if (!payload.ok || !payload.conversation) throw new Error(payload.error ?? "Conversation not found.");
+      setActiveConversationId(payload.conversation.id);
+      setChatScope(payload.conversation.scope);
+      setChatMessages(
+        (payload.messages ?? []).flatMap((message) => [
+          {
+            id: `saved-user-${message.id}`,
+            role: "user" as const,
+            text: message.userMessage,
+            scope: payload.conversation?.scope ?? "upload",
+          },
+          {
+            id: `saved-assistant-${message.id}`,
+            role: "assistant" as const,
+            text: message.chatResponse.answer,
+            scope: payload.conversation?.scope ?? "upload",
+            response: {
+              ok: true,
+              engineConnected: true,
+              reviewRequired: true,
+              queryRunId: message.queryRunId,
+              conversationId: payload.conversation?.id,
+              chatMessageId: message.id,
+              chat: message.chatResponse,
+            },
+          },
+        ]),
+      );
+      setChatConversationStatus("Saved conversation loaded. Ask a new question to append another turn.");
+    } catch (error) {
+      setChatConversationStatus(error instanceof Error ? error.message : "Could not load saved conversation.");
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -643,13 +823,25 @@ export function EvidenceEngineConsole() {
     };
   }, []);
 
+  useEffect(() => {
+    void refreshChatConversations();
+  }, []);
+
   const selectedChain = useMemo(
     () => chains.find((chain) => chain.id === selectedChainId) ?? chains[0] ?? fallbackChains[0],
     [chains, selectedChainId]
   );
   const fieldLabels = useMemo(() => protocolFieldLabels(framework), [framework]);
 
-  const reportMarkdown = getReportMarkdown(runResponse?.result?.artifacts);
+  const rawReportMarkdown = getReportMarkdown(runResponse?.result?.artifacts);
+  const reportMarkdown = getClientReadyReportMarkdown(runResponse?.result?.artifacts);
+  const reportQuality = getReportQuality(runResponse?.result?.artifacts);
+  const reportSections = getReportSections(runResponse?.result?.artifacts);
+  const reportSectionQuality = getReportSectionQuality(runResponse?.result?.artifacts);
+  const reportQualityScore = numberValue(reportQuality, ["readiness_score", "score"]);
+  const reportQualityStatus = typeof reportQuality?.status === "string" ? reportQuality.status : "";
+  const reportRecommendations = stringArrayValue(reportQuality, "recommendations");
+  const reportChecks = reportQualityChecks(reportQuality);
   const sourceInventory = getSourceInventory(runResponse?.result?.artifacts);
   const reportChatText = useMemo(() => buildReportChatText(reportMarkdown, runResponse?.result?.artifacts), [reportMarkdown, runResponse?.result?.artifacts]);
   const sourcesChatText = useMemo(() => buildSourcesChatText(runResponse?.result?.artifacts), [runResponse?.result?.artifacts]);
@@ -659,6 +851,9 @@ export function EvidenceEngineConsole() {
   const needsFullTextCount = countNeedsFullTextTriage(runResponse?.result?.artifacts);
   const figures = chartEntries(runResponse?.result?.artifacts);
   const pdfLooksLikeGeneratedReport = Boolean(pdfFile?.name && /(?:evidara|slr|report|evidenceos)/i.test(pdfFile.name));
+  const showWorkflow = focus === "workspace";
+  const showChatTools = focus === "chat";
+  const showAdvancedTools = focus === "tools";
 
   async function autofillProtocol() {
     setProtocolLoading(true);
@@ -944,14 +1139,10 @@ export function EvidenceEngineConsole() {
             : chatTitle;
       const response = await fetch("/api/internal/evidence-engine/document-chat", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(new URLSearchParams(window.location.search).get("access_token")
-            ? { "x-evidara-internal-token": new URLSearchParams(window.location.search).get("access_token") ?? "" }
-            : {}),
-        },
+        headers: internalRequestHeaders(),
         body: JSON.stringify({
           question: askedQuestion,
+          conversation_id: activeConversationId,
           title: scopedTitle,
           doi: chatScope === "upload" ? chatDoi : "",
           source_url: chatScope === "upload" ? chatSourceUrl : "",
@@ -964,6 +1155,7 @@ export function EvidenceEngineConsole() {
       });
       const payload = (await response.json()) as DocumentChatResponse;
       setChatResponse(payload);
+      if (payload.conversationId) setActiveConversationId(payload.conversationId);
       setChatMessages((items) => [
         ...items,
         {
@@ -975,6 +1167,7 @@ export function EvidenceEngineConsole() {
           error: payload.error,
         },
       ]);
+      void refreshChatConversations();
       setChatQuestion("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Document chat failed.";
@@ -1037,6 +1230,8 @@ export function EvidenceEngineConsole() {
 
   return (
     <section className="space-y-6">
+      {showWorkflow ? (
+        <>
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -1390,6 +1585,8 @@ export function EvidenceEngineConsole() {
                     {[
                       ["summary", "Summary"],
                       ["sources", "Sources"],
+                      ["quality", "Quality"],
+                      ["sections", "Sections"],
                       ["figures", "Figures"],
                       ["report", "Report"],
                       ["candidates", "Candidates"],
@@ -1428,9 +1625,31 @@ export function EvidenceEngineConsole() {
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                         <p className="font-semibold text-slate-950">What happened</p>
                         <p className="mt-2 text-sm leading-6 text-slate-600">
-                          The Python engine completed the selected workflow and normalized source-linked records into a candidate evidence package. Open the Report tab for the draft document, or Candidates for review handoff.
+                          The Python engine completed the selected workflow and normalized source-linked records into a candidate evidence package.
+                          {reportQuality ? " A report quality review was also generated so reviewers can see readiness, formatting checks, and next actions." : " Open the Report tab for the draft document, or Candidates for review handoff."}
                         </p>
                       </div>
+                      {reportQuality ? (
+                        <div className="rounded-2xl border border-teal-200 bg-teal-50 p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="font-semibold text-teal-950">Client-readiness check</p>
+                              <p className="mt-1 text-sm leading-6 text-teal-900">
+                                Status: {reportQualityStatus || "reviewed"} · {reportRecommendations.length} reviewer recommendation(s)
+                              </p>
+                            </div>
+                            {reportQualityScore !== null ? (
+                              <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-700">Score</p>
+                                <p className="mt-1 text-2xl font-semibold text-teal-950">{Math.round(reportQualityScore * 100)}%</p>
+                              </div>
+                            ) : null}
+                          </div>
+                          <button type="button" onClick={() => setOutputTab("quality")} className="mt-4 rounded-full bg-teal-700 px-4 py-2 text-xs font-semibold text-white">
+                            Review quality details
+                          </button>
+                        </div>
+                      ) : null}
                       <div className="rounded-2xl border border-slate-200 bg-white p-5">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                           <div>
@@ -1529,6 +1748,107 @@ export function EvidenceEngineConsole() {
                     )
                   ) : null}
 
+                  {outputTab === "quality" ? (
+                    reportQuality ? (
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Report quality</p>
+                              <h4 className="mt-2 text-lg font-semibold text-slate-950">{reportQualityStatus || "Client-readiness review"}</h4>
+                              <p className="mt-2 text-sm leading-6 text-slate-600">
+                                The export uses the polished markdown when available. Original evidence counts, anchors, limitations, and governance data are preserved.
+                              </p>
+                            </div>
+                            {reportQualityScore !== null ? (
+                              <div className="rounded-2xl bg-white px-5 py-4 text-center ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Readiness</p>
+                                <p className="mt-1 text-3xl font-semibold text-slate-950">{Math.round(reportQualityScore * 100)}%</p>
+                              </div>
+                            ) : null}
+                          </div>
+                          {rawReportMarkdown && rawReportMarkdown !== reportMarkdown ? (
+                            <p className="mt-4 rounded-xl border border-teal-200 bg-white p-3 text-sm leading-6 text-teal-900">
+                              A polished client-ready markdown version is active for preview and export.
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {reportChecks.map((check) => (
+                            <div key={check.id} className={`rounded-2xl border p-4 ${check.passed ? "border-teal-200 bg-teal-50" : "border-amber-200 bg-amber-50"}`}>
+                              <p className={`text-sm font-semibold ${check.passed ? "text-teal-950" : "text-amber-950"}`}>
+                                {check.passed ? "Pass" : "Needs review"} · {check.label}
+                              </p>
+                              {check.details?.length ? (
+                                <ul className="mt-3 space-y-1 text-xs leading-5 text-slate-700">
+                                  {check.details.slice(0, 5).map((item) => (
+                                    <li key={item}>{item}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-2 text-xs leading-5 text-slate-600">No issue detected in this check.</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                          <p className="font-semibold text-slate-950">Recommended fixes before client delivery</p>
+                          {reportRecommendations.length ? (
+                            <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+                              {reportRecommendations.map((item) => (
+                                <li key={item} className="rounded-xl bg-slate-50 p-3">{item}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-2 text-sm leading-6 text-slate-600">No additional recommendations were returned by the report quality reviewer.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No report quality artifact was returned by this run.</p>
+                    )
+                  ) : null}
+
+                  {outputTab === "sections" ? (
+                    reportSections.length ? (
+                      <div className="space-y-3">
+                        {reportSections.map((section, index) => {
+                          const sectionQuality = reportSectionQuality[index];
+                          const title = typeof section.title === "string" ? section.title : `Section ${index + 1}`;
+                          const content = typeof section.content === "string" ? section.content : "";
+                          const sectionStatus = typeof sectionQuality?.status === "string" ? sectionQuality.status : "section reviewed";
+                          const wordCount = numberValue(section, ["word_count"]) ?? numberValue(sectionQuality ?? null, ["word_count"]);
+                          const recommendations = stringArrayValue(sectionQuality ?? null, "recommendations");
+                          return (
+                            <details key={`${title}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                              <summary className="cursor-pointer list-none">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                  <div>
+                                    <p className="font-semibold text-slate-950">{title}</p>
+                                    <p className="mt-1 text-xs text-slate-500">{sectionStatus}{wordCount !== null ? ` · ${wordCount} words` : ""}</p>
+                                  </div>
+                                  <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">Open section</span>
+                                </div>
+                              </summary>
+                              {recommendations.length ? (
+                                <ul className="mt-4 space-y-2 text-sm leading-6 text-amber-900">
+                                  {recommendations.slice(0, 4).map((item) => (
+                                    <li key={item} className="rounded-xl border border-amber-200 bg-amber-50 p-3">{item}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                              <pre className="mt-4 max-h-80 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-4 text-sm leading-6 text-slate-700 ring-1 ring-slate-200">
+                                {content.slice(0, 8000) || safeJson(section)}
+                              </pre>
+                            </details>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No section-level report artifact was returned by this run.</p>
+                    )
+                  ) : null}
+
                   {outputTab === "report" ? (
                     reportMarkdown ? (
                       <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-5 text-sm leading-6 text-slate-800">
@@ -1619,8 +1939,32 @@ export function EvidenceEngineConsole() {
           ) : null}
         </div>
       ) : null}
+        </>
+      ) : null}
 
-      <details className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      {focus === "workspace" ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Link href="/app/chat" className="rounded-3xl border border-teal-200 bg-teal-50 p-5 shadow-sm transition hover:border-teal-400 hover:bg-white">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Evidence Chat</p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-950">Ask questions after a run or upload a document</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              Use the chat workspace for source-grounded questions about reports, retrieved records, PDFs, DOCX files, or pasted text.
+            </p>
+            <span className="mt-4 inline-flex rounded-full bg-teal-700 px-4 py-2 text-xs font-semibold text-white">Open chat</span>
+          </Link>
+          <Link href="/app/tools" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Advanced tools</p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-950">Inspect retrieval, hydration, FAERS, trials, and labels</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Operator diagnostics are separated from the main workflow so first-time users do not land in the machinery.
+            </p>
+            <span className="mt-4 inline-flex rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900">Open tools</span>
+          </Link>
+        </div>
+      ) : null}
+
+      {showAdvancedTools ? (
+      <details open={showAdvancedTools} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <summary className="cursor-pointer list-none">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -1813,7 +2157,10 @@ export function EvidenceEngineConsole() {
           </div>
         </div>
       </details>
+      ) : null}
 
+      {showChatTools ? (
+        <>
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -1962,14 +2309,9 @@ export function EvidenceEngineConsole() {
                   : "Using normalized source records, identifiers, abstracts, hydration status, and available full-text snippets as the chat context."}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => runDocumentChat()}
-              disabled={chatLoading}
-              className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {chatLoading ? "Thinking..." : "Send message"}
-            </button>
+            <p className="rounded-2xl bg-teal-50 p-4 text-sm leading-6 text-teal-950">
+              Ask in the chat box on the right. EvidaraOS will answer only from the selected report, source set, or uploaded document and show citations for review.
+            </p>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1979,8 +2321,45 @@ export function EvidenceEngineConsole() {
                 <h4 className="mt-2 font-semibold text-slate-950">
                   {chatMessages.length ? "Conversation with selected evidence" : "Upload or choose context, then ask a question"}
                 </h4>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {activeConversationId ? `Saved conversation ${activeConversationId.slice(0, 8)}` : chatConversationStatus}
+                </p>
               </div>
               {chatResponse?.queryRunId ? <span className="font-mono text-[11px] text-slate-500">{chatResponse.queryRunId.slice(0, 8)}</span> : null}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Saved conversations</p>
+                <button
+                  type="button"
+                  onClick={() => refreshChatConversations()}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Refresh
+                </button>
+              </div>
+              {chatConversations.length ? (
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {chatConversations.slice(0, 8).map((conversation) => (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      onClick={() => loadChatConversation(conversation.id)}
+                      className={`min-w-56 rounded-xl border p-3 text-left text-xs transition ${
+                        activeConversationId === conversation.id
+                          ? "border-teal-500 bg-teal-50 text-teal-950"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                      }`}
+                    >
+                      <span className="block font-semibold">{conversation.title}</span>
+                      <span className="mt-1 block text-slate-500">{conversation.scope} · {new Date(conversation.updatedAt).toLocaleString()}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-xs leading-5 text-slate-500">No saved chat turns yet. Send a message to create an auditable conversation.</p>
+              )}
             </div>
 
             <div className="mt-4 max-h-[42rem] space-y-4 overflow-auto pr-1">
@@ -1994,40 +2373,65 @@ export function EvidenceEngineConsole() {
                           <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${message.role === "user" ? "text-slate-300" : "text-slate-500"}`}>
                             {message.role === "user" ? "You" : "EvidaraOS"} · {message.scope}
                           </p>
-                          {chat ? <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">{chat.snippets.length} snippets</span> : null}
+                          {chat ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                              {chat.answer_type} · {chat.confidence} · {chat.citations.length} citation(s)
+                            </span>
+                          ) : null}
                         </div>
                         <pre className={`mt-3 whitespace-pre-wrap text-sm leading-6 ${message.role === "user" ? "text-white" : "text-slate-800"}`}>{message.text}</pre>
                         {message.error ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">{message.error}</p> : null}
-                        {chat?.extracted_fields.length ? (
+                        {chat?.evidence_used.signals.length ? (
                           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Extracted fields</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Structured signals</p>
                             <div className="mt-2 space-y-2">
-                              {chat.extracted_fields.slice(0, 6).map((field, index) => (
-                                <div key={`${message.id}-${field.field}-${index}`} className="rounded-lg bg-white p-2">
-                                  <p className="text-xs font-semibold text-slate-500">{field.field}</p>
-                                  <p className="mt-1 text-sm text-slate-900">{field.value}</p>
+                              {chat.evidence_used.signals.slice(0, 6).map((signal, index) => (
+                                <div key={`${message.id}-${signal.name}-${index}`} className="rounded-lg bg-white p-2">
+                                  <p className="text-xs font-semibold text-slate-500">{signal.name.replaceAll("_", " ")}</p>
+                                  <p className="mt-1 text-sm text-slate-900">{signal.value}</p>
                                 </div>
                               ))}
                             </div>
                           </div>
                         ) : null}
-                        {chat?.snippets.length ? (
+                        {chat?.citations.length ? (
                           <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">Source snippets</summary>
+                            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-slate-600">Evidence citations</summary>
                             <div className="mt-3 space-y-3">
-                              {chat.snippets.slice(0, 4).map((snippet, index) => {
-                                const section = typeof snippet.section === "string" ? snippet.section : "Evidence context";
-                                const text = typeof snippet.snippet === "string" ? snippet.snippet : typeof snippet.text === "string" ? snippet.text : "";
+                              {chat.citations.slice(0, 4).map((citation, index) => {
                                 return (
-                                  <div key={`${message.id}-${section}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                                    <p className="text-xs font-semibold text-slate-500">{section}</p>
-                                    <p className="mt-2 text-sm leading-6 text-slate-800">{text.slice(0, 800)}</p>
+                                  <div key={`${message.id}-${citation.source_id}-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-xs font-semibold text-slate-500">{citation.title}</p>
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">{citation.relevance}</span>
+                                    </div>
+                                    {citation.locator ? <p className="mt-1 text-xs text-slate-500">{citation.locator}</p> : null}
+                                    <p className="mt-2 text-sm leading-6 text-slate-800">{citation.snippet.slice(0, 800)}</p>
                                   </div>
                                 );
                               })}
                             </div>
                           </details>
                         ) : null}
+                        {chat?.follow_up_questions.length ? (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {chat.follow_up_questions.slice(0, 4).map((question) => (
+                              <button
+                                key={`${message.id}-${question}`}
+                                type="button"
+                                onClick={() => {
+                                  setChatQuestion(question);
+                                  void runDocumentChat(question);
+                                }}
+                                disabled={chatLoading}
+                                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {question}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {chat?.provenance_summary ? <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">{chat.provenance_summary}</p> : null}
                       </div>
                     </div>
                   );
@@ -2067,6 +2471,7 @@ export function EvidenceEngineConsole() {
                 onClick={() => {
                   setChatMessages([]);
                   setChatResponse(null);
+                  setActiveConversationId("");
                 }}
                 className="mt-4 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -2232,6 +2637,8 @@ export function EvidenceEngineConsole() {
           </div>
         </div>
       </div>
+        </>
+      ) : null}
     </section>
   );
 }

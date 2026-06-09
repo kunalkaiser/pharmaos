@@ -2,12 +2,13 @@
 
 ## Current Status
 
-Phase B1 adds a server-only PostgreSQL persistence path for evidence provenance, candidate promotion, and query audit foundations.
+Phase B1 adds a server-only PostgreSQL persistence path for evidence provenance, candidate promotion, query audit, and Evidence Chat conversation foundations.
 
 When `DATABASE_URL` is configured and migrations are applied, these helpers persist to PostgreSQL:
 
 - `src/lib/evidence-foundation.ts`
 - `src/lib/query-audit.ts`
+- `src/lib/evidence-chat-persistence.ts`
 
 When `DATABASE_URL` is not configured, the helpers retain the existing `.evidara-data` JSON fallback for local development only. Local JSON storage is not beta-ready storage and must not be used for reviewed evidence workflows.
 
@@ -18,6 +19,7 @@ Apply these migrations before using persistence in an internal beta environment:
 - `db/migrations/0001_citation_provenance_foundation.sql`
 - `db/migrations/0002_query_audit_foundation.sql`
 - `db/migrations/0003_candidate_promotion_foundation.sql`
+- `db/migrations/0011_evidence_chat_persistence.sql`
 
 The persistence foundation covers:
 
@@ -34,6 +36,8 @@ The persistence foundation covers:
 - `query_errors`
 - `query_audit_snapshots`
 - `candidate_promotions`
+- `evidence_chat_conversations`
+- `evidence_chat_messages`
 
 ## Environment Variables
 

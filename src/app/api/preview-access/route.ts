@@ -24,7 +24,9 @@ export async function GET(request: Request) {
 
   const forwardedProto = request.headers.get("x-forwarded-proto") ?? url.protocol.replace(":", "");
   const forwardedHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? url.host;
-  const redirectUrl = new URL("/app", `${forwardedProto}://${forwardedHost}`);
+  const requestedRedirect = url.searchParams.get("redirect") ?? "";
+  const safeRedirect = requestedRedirect.startsWith("/app") && !requestedRedirect.startsWith("//") ? requestedRedirect : "/app";
+  const redirectUrl = new URL(safeRedirect, `${forwardedProto}://${forwardedHost}`);
   redirectUrl.searchParams.set("access_token", token);
   for (const key of ["chain", "question", "drug", "indication", "framework"]) {
     const value = url.searchParams.get(key);
