@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local agent/GTM skill tooling (not application code; contains a nested git repo)
+.codex/
