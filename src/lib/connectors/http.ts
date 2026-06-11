@@ -1,7 +1,7 @@
 import "server-only";
 
 export function sanitizeQuery(query: string) {
-  return query.trim().replace(/\s+/g, " ").slice(0, 160);
+  return query.trim().replace(/\s+/g, " ").slice(0, 500);
 }
 
 export function today() {

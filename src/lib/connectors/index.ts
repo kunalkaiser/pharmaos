@@ -62,7 +62,7 @@ export function connectorSearchParams(searchParams: URLSearchParams): ConnectorS
 export function validateConnectorQuery(query: string) {
   if (!query) return "A query parameter is required.";
   if (query.length < 2) return "Query must be at least 2 characters.";
-  if (query.length > 160) return "Query must be 160 characters or fewer.";
+  if (query.length > 500) return "Query must be 500 characters or fewer.";
   return null;
 }
 
