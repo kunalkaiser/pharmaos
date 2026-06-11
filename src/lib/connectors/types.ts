@@ -71,6 +71,8 @@ export type EvidenceCandidate = {
   intervention?: string;
   trialPhase?: string;
   trialStatus?: string;
+  studyDesign?: string;
+  publicationTypes?: string[];
   labelSection?: string;
   geography?: string;
   datasetName?: string;
