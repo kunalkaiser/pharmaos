@@ -220,7 +220,7 @@ function normalizeProtocol(question: string, protocol: EvidenceEngineProtocolRes
     /\bhow\s+(?:does|do)\s+(.+?)\s+(?:compare|compares|perform|performs)?\s*(?:versus|vs\.?|compared\s+with|compared\s+to|against)\s+/i,
   ]);
   const parsedComparator = firstMatch(question, [
-    /\b(?:versus|vs\.?|compared\s+with|compared\s+to|against)\s+(.+?)(?:\s+\bon\b\s+(?:overall survival|progression-free survival|progression free survival|safety|adverse events?|efficacy|clinical response)|\s+\b(?:in|among|for)\b|,\s*(?:focusing|including)|\s+\b(?:using|during|over)\b|;|\.|\?|$)/i,
+    /\b(?:versus|vs\.?|compared\s+with|compared\s+to|against)\s+(.+?)(?:\s+\bon\b\s+(?:overall survival|progression-free survival|progression free survival|safety|adverse events?|efficacy|clinical response)|\s+\b(?:in|among|for|to|improv\w*|reduc\w*|increas\w*|decreas\w*|lower\w*|rais\w*|prevent\w*)\b|,\s*(?:focusing|including)|\s+\b(?:using|during|over)\b|;|\.|\?|$)/i,
   ]);
 
   if (parsedPopulation) pico.population = parsedPopulation;
