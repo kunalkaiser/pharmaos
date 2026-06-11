@@ -21,10 +21,17 @@ import type {
   EvidenceEngineUniversalQueryRequest,
 } from "./types";
 
-const defaultEngineBaseUrl = "https://evidaraos-python-api-production.up.railway.app";
-
 function engineBaseUrl() {
-  return (process.env.EVIDARA_ENGINE_BASE_URL ?? defaultEngineBaseUrl).replace(/\/$/, "");
+  const base = process.env.EVIDARA_ENGINE_BASE_URL?.trim();
+  if (!base) {
+    // No implicit default — a missing value must fail loudly rather than silently
+    // routing to a hardcoded production backend (how local dev used to hit prod).
+    throw new Error(
+      "EVIDARA_ENGINE_BASE_URL is not set. Configure the evidence engine base URL " +
+        "explicitly per environment — e.g. https://evidence-os-production.up.railway.app",
+    );
+  }
+  return base.replace(/\/$/, "");
 }
 
 function engineHeaders() {
